@@ -4,7 +4,7 @@ import { User, Phone, Calendar, Users, HelpCircle, X, PlusCircle, CheckCircle, S
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import AdminPanel from './AdminPanel';
 
-const API_BASE = 'http://localhost:5000/api';
+const API_BASE = '/api';
 
 function UserPortal() {
   const [formData, setFormData] = useState({
@@ -582,7 +582,7 @@ function UserPortal() {
 
 function App() {
   return (
-    <Router>
+    <Router basename="/registration">
       <Routes>
         <Route path="/" element={<UserPortal />} />
         <Route path="/admin" element={<AdminPanel />} />
