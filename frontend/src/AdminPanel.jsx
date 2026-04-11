@@ -46,7 +46,7 @@ const AdminPanel = () => {
   const [stats, setStats] = useState({ totalBookings: 0, totalMembers: 0, totalUsers: 0, todaysBookings: 0, todaysPilgrims: 0, chartData: [] });
   const [searchReg, setSearchReg] = useState('');
   const [exportDate, setExportDate] = useState('');
-  const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]);
+  const [filterDate, setFilterDate] = useState('');
   const [filterGender, setFilterGender] = useState('');
   const [loading, setLoading] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState(null);
