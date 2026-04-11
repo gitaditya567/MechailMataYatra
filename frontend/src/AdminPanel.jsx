@@ -533,7 +533,7 @@ const AdminPanel = () => {
                       type="text" 
                       className="admin-input"
                       style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
-                      placeholder="Enter Number (e.g. 0001)" 
+                      placeholder="Enter Number (e.g. 100001)" 
                       value={searchReg}
                       onChange={(e) => setSearchReg(e.target.value)}
                       onKeyDown={(e) => {

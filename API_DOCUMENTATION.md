@@ -1,40 +1,37 @@
 # Shri Machail Mata Yatra - External API Documentation (v1.0)
 
-Welcome to the official API documentation for the Shri Machail Mata Yatra Registration Portal. This API allows authorized external partners to search for pilgrim bookings and retrieve detailed registration information.
+Welcome to the official developer documentation for the Shri Machail Mata Yatra Registration Portal. This API allows authorized partner systems to retrieve pilgrim registration data and portal statistics.
 
 ---
 
 ## 🔐 Authentication
 
-All API requests must be authenticated using an **API Key** passed in the HTTP header. 
+All API requests require an **API Key** to be sent in the HTTP header. Requests without a valid key will return a `401 Unauthorized` error.
 
 | Header Name | Required | Description |
 |:---|:---|:---|
-| `x-api-key` | **Yes** | Your unique security key provided by the administration. |
+| `x-api-key` | **Yes** | Your unique access key (Generate in Admin Panel > API Keys) |
 
-> [!WARNING]
-> **Keep your API Key secure.** Never share it in public repositories or front-end client-side code that is accessible to unauthorized users.
+> [!IMPORTANT]
+> **API Key Security**: Treat your API key like a password. Do not embed it in client-side JavaScript or expose it in public repositories.
 
 ---
 
-## 🌐 API Base URLs
+## 🌐 API Base URL
 
 | Environment | Base URL |
 |:---|:---|
 | **Production** | `https://shrimachailmatayatra.com/api/v1/external` |
-| **Sandbox (Local)** | `http://localhost:5001/api/v1/external` |
 
 ---
 
 ## 🚀 Endpoints
 
----
+### 1. Overall Statistics
+Retrieve the current tally of registered groups and pilgrims.
 
-### 1. Get Overall Statistics
-Retrieve the total number of registration groups (bookings) and total pilgrims registered.
-
-- **Method:** `GET`
-- **Path:** `/stats`
+- **Method**: `GET`
+- **Path**: `/stats`
 
 #### Example Request
 ```bash
@@ -47,25 +44,24 @@ curl -X GET "https://shrimachailmatayatra.com/api/v1/external/stats" \
 {
     "success": true,
     "data": {
-        "totalBookings": 1540,
-        "totalMembers": 4250
+        "totalBookings": 5,
+        "totalMembers": 12
     }
 }
 ```
 
 ---
 
-### 2. Search Bookings by Mobile
-Retrieve a list of all bookings associated with a specific mobile number.
+### 2. Search by Mobile Number
+Find all registration records associated with a specific mobile number.
 
-- **Method:** `GET`
-- **Path:** `/search`
-- **Query Parameters:**
-    - `mobile` (Required): The 10-digit mobile number of the primary pilgrim.
+- **Method**: `GET`
+- **Path**: `/search`
+- **Params**: `mobile` (10-digit number)
 
 #### Example Request
 ```bash
-curl -X GET "https://shrimachailmatayatra.com/api/v1/external/search?mobile=9906123456" \
+curl -X GET "https://shrimachailmatayatra.com/api/v1/external/search?mobile=9999999999" \
      -H "x-api-key: YOUR_API_KEY"
 ```
 
@@ -75,15 +71,15 @@ curl -X GET "https://shrimachailmatayatra.com/api/v1/external/search?mobile=9906
     "success": true,
     "user": {
         "name": "Aditya Sharma",
-        "mobile": "9906123456",
+        "mobile": "9999999999",
         "email": "aditya@example.com"
     },
     "bookings": [
         {
-            "referenceId": "MATA/2026/0045",
-            "darshanDate": "2026-05-15",
-            "totalMembers": 3,
-            "createdAt": "2026-04-10T14:30:00Z"
+            "referenceId": "MATA/2026/100001",
+            "darshanDate": "2026-04-11",
+            "totalMembers": 1,
+            "createdAt": "2026-04-11T09:10:14Z"
         }
     ]
 }
@@ -91,17 +87,15 @@ curl -X GET "https://shrimachailmatayatra.com/api/v1/external/search?mobile=9906
 
 ---
 
-### 3. Get Booking Details
-Fetch full details of a specific booking using its unique Reference ID.
+### 3. Get Full Booking Details
+Retrieve complete member details for a specific registration reference ID.
 
-- **Method:** `GET`
-- **Path:** `/booking/{referenceId}`
-- **URL Parameters:**
-    - `referenceId` (Required): The unique booking reference (e.g., `MATA/2026/0045`).
+- **Method**: `GET`
+- **Path**: `/booking/{referenceId}`
 
 #### Example Request
 ```bash
-curl -X GET "https://shrimachailmatayatra.com/api/v1/external/booking/MATA/2026/0045" \
+curl -X GET "https://shrimachailmatayatra.com/api/v1/external/booking/MATA/2026/100001" \
      -H "x-api-key: YOUR_API_KEY"
 ```
 
@@ -110,26 +104,20 @@ curl -X GET "https://shrimachailmatayatra.com/api/v1/external/booking/MATA/2026/
 {
     "success": true,
     "data": {
-        "referenceId": "MATA/2026/0045",
-        "darshanDate": "2026-05-15",
-        "totalMembers": 2,
+        "referenceId": "MATA/2026/100001",
+        "darshanDate": "2026-04-11",
         "members": [
             {
-                "name": "Aditya Sharma",
-                "age": 28,
+                "name": "Test User",
+                "age": 30,
                 "gender": "Male",
-                "regNo": "MATA/2026/0045"
-            },
-            {
-                "name": "Priya Sharma",
-                "age": 25,
-                "gender": "Female",
-                "regNo": "MATA/2026/0046"
+                "regNo": "MATA/2026/100001",
+                "photo": "base64_data..."
             }
         ],
         "primaryUser": {
-            "name": "Aditya Sharma",
-            "mobile": "9906123456"
+            "name": "Test User",
+            "mobile": "9999999999"
         }
     }
 }
@@ -137,16 +125,22 @@ curl -X GET "https://shrimachailmatayatra.com/api/v1/external/booking/MATA/2026/
 
 ---
 
-## ❌ Error Codes
+## 🛠 Testing Tool
 
-| Status Code | Message | Description |
-|:---|:---|:---|
-| `401` | Unauthorized | API Key is missing or invalid. |
-| `403` | Forbidden | Insufficient permissions for this endpoint. |
-| `404` | Not Found | The requested booking or data could not be found. |
-| `500` | Internal Error | An unexpected error occurred on the server. |
+To quickly verify your key and see the data structure, you can use the **API Tester Tool** included in this package (`api_tester.html`). 
+Simply open the file in any modern browser, enter your key, and click **Test Connection**.
 
 ---
 
-## 🛠 Support
-For technical issues or API key requests, please contact the IT Administration at support@shrimachailmatayatra.com.
+## ❌ Common Error Codes
+
+| Code | Status | Meaning |
+|:---|:---|:---|
+| `401` | Unauthorized | Missing or invalid `x-api-key`. |
+| `403` | Forbidden | Key is inactive or lacks 'read' permissions. |
+| `404` | Not Found | No booking found for the provided Reference ID / Mobile. |
+| `500` | Server Error | An internal error occurred. Contact infrastructure support. |
+
+---
+
+© 2026 Shri Machail Mata Yatra IT Support.

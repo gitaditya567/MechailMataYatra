@@ -230,13 +230,16 @@ router.post('/book', async (req, res) => {
     });
 
     let currentSeq = maxSeq;
+    if (currentSeq < 100000) {
+      currentSeq = 100000;
+    }
 
     // Assign sequential regNo to each member
     const allMembers = [];
     
     // Primary member first
     currentSeq++;
-    const primaryRegNo = `MATA/2026/${currentSeq.toString().padStart(4, '0')}`;
+    const primaryRegNo = `MATA/2026/${currentSeq.toString().padStart(6, '0')}`;
     allMembers.push({
       name: user.name,
       age: user.age,
@@ -251,7 +254,7 @@ router.post('/book', async (req, res) => {
       currentSeq++;
       allMembers.push({
         ...m,
-        regNo: `MATA/2026/${currentSeq.toString().padStart(4, '0')}`
+        regNo: `MATA/2026/${currentSeq.toString().padStart(6, '0')}`
       });
     });
 
