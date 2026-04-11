@@ -7,7 +7,7 @@ import AdminPanel from './AdminPanel';
 const API_BASE = '/api';
 
 function UserPortal() {
-  const today = new Date().toISOString().split('T')[0];
+  const today = new Date().toLocaleDateString('en-CA'); // Gets YYYY-MM-DD in local time
   
   const [formData, setFormData] = useState({
     name: '',
@@ -37,8 +37,14 @@ function UserPortal() {
   const fetchSlots = async () => {
     if (!formData.darshanDate) return;
     setLoadingSlots(true);
+    // Reset slots to 0 while loading so user doesn't see old data
+    setSlots({ total: 6000, booked: 0, available: 6000 });
+    
     try {
-      const res = await axios.get(`${API_BASE}/slots/${formData.darshanDate}`);
+      // Add cache-busting timestamp to ensure fresh data
+      const res = await axios.get(`${API_BASE}/slots/${formData.darshanDate}`, {
+        params: { t: Date.now() }
+      });
       setSlots(res.data);
     } catch (err) {
       console.error('Error fetching slots:', err);
