@@ -4,6 +4,29 @@ const Booking = require('../models/Booking');
 const User = require('../models/User');
 const authExternal = require('../middleware/authExternal');
 
+// GET: Fetch overall statistics (Total Registrations)
+// Requires 'read' permission
+router.get('/stats', authExternal('read'), async (req, res) => {
+  try {
+    const totalBookings = await Booking.countDocuments();
+    const stats = await Booking.aggregate([
+      { $group: { _id: null, totalMembers: { $sum: "$totalMembers" } } }
+    ]);
+    
+    const totalMembers = stats.length > 0 ? stats[0].totalMembers : 0;
+
+    res.json({
+      success: true,
+      data: {
+        totalBookings,
+        totalMembers
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Error fetching stats', error: err.message });
+  }
+});
+
 // GET: Fetch booking details by Reference ID
 // Requires 'read' permission
 router.get(/^\/booking\/(.*)/, authExternal('read'), async (req, res) => {

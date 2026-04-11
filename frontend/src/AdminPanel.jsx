@@ -50,6 +50,7 @@ const AdminPanel = () => {
   const [filterGender, setFilterGender] = useState('');
   const [loading, setLoading] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState(null);
+  const [selectedPilgrim, setSelectedPilgrim] = useState(null);
   const [showModal, setShowModal] = useState(false);
   
   // API Key Management State
@@ -73,19 +74,32 @@ const AdminPanel = () => {
     
     fullReg = fullReg.toUpperCase();
 
-    const booking = bookings.find(b => {
-      if (b.referenceId.toUpperCase() === fullReg) return true;
-      if (b.members && b.members.length > 0) {
-        return b.members.some(m => m.regNo && m.regNo.toUpperCase() === fullReg);
-      }
-      return false;
-    });
-
-    if (booking) {
-      setSelectedBooking(booking);
+    // 1. First try to find the specific pilgrim in our flattened list
+    const pilgrim = allPilgrims.find(p => p.regNo.toUpperCase() === fullReg);
+    
+    if (pilgrim) {
+      setSelectedBooking(pilgrim.bookingObj);
+      setSelectedPilgrim(pilgrim);
       setShowModal(true);
     } else {
-      alert("Registration Number not found!");
+      // 2. Fallback: Search by reference ID (booking ID)
+      const booking = bookings.find(b => b.referenceId.toUpperCase() === fullReg);
+      if (booking) {
+        // Find the primary pilgrim for this booking
+        const primaryP = allPilgrims.find(p => p.bookingObj._id === booking._id && p.isPrimary);
+        setSelectedBooking(booking);
+        setSelectedPilgrim(primaryP || {
+          regNo: booking.referenceId,
+          name: booking.primaryUser?.name,
+          mobile: booking.primaryUserMobile,
+          gender: booking.primaryUser?.gender,
+          photo: booking.primaryUser?.photo,
+          darshanDate: booking.darshanDate
+        });
+        setShowModal(true);
+      } else {
+        alert("Registration Number not found!");
+      }
     }
   };
 
@@ -223,9 +237,12 @@ const AdminPanel = () => {
     alert("API Key copied to clipboard!");
   };
 
-  let allPilgrims = [];
+  const allPilgrims = [];
   bookings.forEach(b => {
-    if (b.primaryUser) {
+    const primaryInMembers = b.members?.some(m => m.regNo === b.referenceId);
+
+    // If there's a primary member who isn't explicitly listed in the members array (legacy data)
+    if (b.primaryUser && !primaryInMembers) {
       allPilgrims.push({
         _id: b._id,
         bookingObj: b,
@@ -241,20 +258,29 @@ const AdminPanel = () => {
       });
     }
     
+    // Process all members in the array
     if (b.members && b.members.length > 0) {
       b.members.forEach((m, idx) => {
+        // A member is primary if their regNo matches the booking referenceId 
+        // OR if they are the first member in a booking that doesn't have a separate primaryUser object
+        const isActuallyPrimary = (m.regNo === b.referenceId) || (!b.primaryUser && idx === 0);
+        
+        // If we already added primary manually (legacy), skip it in members loop if IDs match
+        if (isActuallyPrimary && !primaryInMembers && b.primaryUser) return;
+
         allPilgrims.push({
-          _id: `${b._id}-M${idx}`,
+          _id: isActuallyPrimary ? b._id : `${b._id}-M${idx}`,
           bookingObj: b,
-          isPrimary: false,
+          isPrimary: isActuallyPrimary,
           photo: m.photo,
-          regNo: m.regNo || `${b.referenceId}/M${idx+1}`,
+          // Fallback logic for legacy data: if regNo is missing, use referenceId/XX only if it's not the primary
+          regNo: m.regNo || (idx === 0 ? b.referenceId : `${b.referenceId}/${(idx).toString().padStart(2, '0')}`),
           name: m.name,
           gender: m.gender,
-          email: '-',
+          email: isActuallyPrimary ? (b.primaryUser?.email || '-') : '-',
           mobile: m.mobile || b.primaryUserMobile,
           darshanDate: b.darshanDate,
-          totalMembers: '-'
+          totalMembers: isActuallyPrimary ? b.totalMembers : '-'
         });
       });
     }
@@ -632,15 +658,15 @@ const AdminPanel = () => {
                       <td>{p.darshanDate}</td>
                       <td>{p.totalMembers}</td>
                       <td>
-                        <button className="btn-view-admin" onClick={() => { setSelectedBooking(p.bookingObj); setShowModal(true); }}>
-                          View
-                        </button>
-                        {p.isPrimary && (
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button className="btn-view-admin" onClick={() => { setSelectedBooking(p.bookingObj); setSelectedPilgrim(p); setShowModal(true); }}>
+                            View
+                          </button>
                           <button className="btn-delete-admin" onClick={() => handleDelete(p.bookingObj._id)}>
                             <Trash2 size={14} style={{ marginRight: '4px', verticalAlign: 'middle' }} />
                             Delete
                           </button>
-                        )}
+                        </div>
                       </td>
                     </tr>
                   )) : (
@@ -759,97 +785,54 @@ const AdminPanel = () => {
             </div>
             <div className="modal-body-admin" id="admin-receipt-view" style={{ background: '#ffffcc', color: '#333', fontFamily: 'serif', padding: '2rem', border: '1px solid #ddd' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '1.5rem' }}>
-                <div style={{ background: '#8b0000', color: 'white', padding: '10px 20px', borderRadius: '4px', textAlign: 'center', width: '250px' }}>
-                  <span style={{ fontSize: '18px', fontWeight: 'bold' }}>Shri Machail Mata Yatra</span>
+                <div style={{ background: '#8b0000', color: 'white', padding: '10px 20px', borderRadius: '4px', textAlign: 'center', width: '220px' }}>
+                  <span style={{ fontSize: '16px', fontWeight: 'bold' }}>Shri Machail Mata Yatra</span>
                   <br /><small>A journey of Faith</small>
                 </div>
                 <div style={{ textAlign: 'center', flex: 1 }}>
                   <h2 style={{ color: '#000', textShadow: 'none', border: 'none', margin: 0, fontSize: '24px' }}>Jai Mata Di</h2>
                 </div>
-                <div style={{ width: '100px', height: '100px', border: '1px solid #ccc', background: 'white' }}>
+                <div style={{ width: '100px', height: '100px', border: '1px solid #ccc', background: 'white', overflow: 'hidden' }}>
                   {(() => {
-                    const coPilgrims = selectedBooking.members && selectedBooking.members.length > 0 
-                      ? `\nCo-Pilgrims:\n${selectedBooking.members.map(m => `- ${m.name}`).join('\n')}` 
-                      : '';
-                    const qrText = encodeURIComponent(`SHRI MACHAIL MATA YATRA 2026\n----------------------------\nReg No: ${selectedBooking.referenceId}\nPilgrim: ${selectedBooking.primaryUser?.name}\nMobile: ${selectedBooking.primaryUserMobile}\nDarshan Date: ${selectedBooking.darshanDate}\nTotal Members: ${selectedBooking.totalMembers}${coPilgrims}\nJai Mata Di!`);
+                    const qrText = encodeURIComponent(`MACHAIL MATA YATRA 2026\n----------------------------\nReg No: ${selectedPilgrim.regNo}\nName: ${selectedPilgrim.name}\nMobile: ${selectedPilgrim.mobile}\nDarshan Date: ${selectedPilgrim.darshanDate}\nJai Mata Di!`);
                     return <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${qrText}`} alt="QR" style={{ width: '100%' }} />;
                   })()}
                 </div>
               </div>
 
-              <h3 style={{ color: '#d9534f', fontSize: '18px', borderBottom: '1px solid #eee', paddingBottom: '5px', marginBottom: '15px', textAlign: 'left' }}>
-                Registration No. - {selectedBooking.referenceId}
-              </h3>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 1fr', gap: '15px', fontSize: '13px', alignItems: 'center' }}>
-                <div style={{ width: '80px', height: '80px', border: '1px solid #ccc', overflow: 'hidden', background: 'white' }}>
-                  {selectedBooking.primaryUser?.photo ? (
-                    <img src={selectedBooking.primaryUser.photo} alt="Primary" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    <div style={{ fontSize: '10px', textAlign: 'center', marginTop: '30px' }}>No Photo</div>
-                  )}
-                </div>
-                <div style={{ textAlign: 'left' }}>
-                  <p><strong>Name : </strong>{selectedBooking.primaryUser?.name}</p>
-                  <p><strong>Mobile : </strong>{selectedBooking.primaryUserMobile}</p>
-                  <p><strong>Email : </strong>{selectedBooking.primaryUser?.email}</p>
-                  <p><strong>Address : </strong>{selectedBooking.primaryUser?.address}</p>
-                </div>
-                <div style={{ textAlign: 'left' }}>
-                  <p>Age : {selectedBooking.primaryUser?.age} Year</p>
-                  <p>Gender : {selectedBooking.primaryUser?.gender}</p>
-                  <p>Registration Date : {selectedBooking.createdAt ? new Date(selectedBooking.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]}</p>
-                  <p>Darshan Date : {selectedBooking.darshanDate}</p>
+              <div style={{ background: 'white', padding: '15px', borderRadius: '4px', border: '1px solid #eee', marginBottom: '15px' }}>
+                <h4 style={{ margin: '0 0 10px 0', fontSize: '15px', color: '#8b0000', borderBottom: '1px solid #eee', paddingBottom: '5px' }}>Individual Registration Slip</h4>
+                <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+                  <div style={{ width: '100px', height: '100px', border: '1px solid #ddd', borderRadius: '4px', overflow: 'hidden' }}>
+                    {selectedPilgrim.photo ? (
+                      <img src={selectedPilgrim.photo} alt={selectedPilgrim.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', background: '#f5f5f5', fontSize: '10px' }}>No Photo</div>
+                    )}
+                  </div>
+                  <div style={{ flex: 1, textAlign: 'left', fontSize: '14px' }}>
+                    <p style={{ margin: '0 0 5px 0' }}><strong>Registration ID:</strong> <span style={{ color: '#d35400', fontWeight: 'bold' }}>{selectedPilgrim.regNo}</span></p>
+                    <p style={{ margin: '0 0 5px 0' }}><strong>Name:</strong> {selectedPilgrim.name}</p>
+                    <p style={{ margin: '0 0 5px 0' }}><strong>Gender:</strong> {selectedPilgrim.gender}</p>
+                    <p style={{ margin: '0 0 5px 0' }}><strong>Mobile:</strong> {selectedPilgrim.mobile}</p>
+                  </div>
+                  <div style={{ flex: 1, textAlign: 'left', fontSize: '14px' }}>
+                    <p style={{ margin: '0 0 5px 0' }}><strong>Darshan Date:</strong> {selectedPilgrim.darshanDate}</p>
+                    <p style={{ margin: '0 0 5px 0' }}><strong>Status:</strong> <span style={{ color: 'green', fontWeight: 'bold' }}>Confirmed</span></p>
+                  </div>
                 </div>
               </div>
-
-              {selectedBooking.members && selectedBooking.members.length > 0 && (
-                <div style={{ marginTop: '20px', borderTop: '1px solid #ccc', paddingTop: '10px' }}>
-                  <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#8b0000', textAlign: 'left' }}>Co-Pilgrims / Family Members</h4>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
-                    <thead>
-                      <tr style={{ background: '#f5f5f5', textAlign: 'left' }}>
-                        <th style={{ padding: '4px', border: '1px solid #ddd' }}>Reg No.</th>
-                        <th style={{ padding: '4px', border: '1px solid #ddd' }}>Photo</th>
-                        <th style={{ padding: '4px', border: '1px solid #ddd' }}>Name</th>
-                        <th style={{ padding: '4px', border: '1px solid #ddd' }}>Age</th>
-                        <th style={{ padding: '4px', border: '1px solid #ddd' }}>Gender</th>
-                        <th style={{ padding: '4px', border: '1px solid #ddd' }}>Mobile</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedBooking.members.map((m, idx) => (
-                        <tr key={idx}>
-                          <td style={{ padding: '4px', border: '1px solid #ddd', fontWeight: 'bold', color: '#8b0000' }}>{m.regNo || 'N/A'}</td>
-                          <td style={{ padding: '4px', border: '1px solid #ddd', textAlign: 'center', background: 'white' }}>
-                            {m.photo ? (
-                              <img src={m.photo} alt={m.name} style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '4px', border: '1px solid #ccc' }} />
-                            ) : (
-                              <div style={{ padding: '10px' }}>No Photo</div>
-                            )}
-                          </td>
-                          <td style={{ padding: '4px', border: '1px solid #ddd' }}>{m.name}</td>
-                          <td style={{ padding: '4px', border: '1px solid #ddd' }}>{m.age}</td>
-                          <td style={{ padding: '4px', border: '1px solid #ddd' }}>{m.gender}</td>
-                          <td style={{ padding: '4px', border: '1px solid #ddd' }}>{m.mobile}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
 
               <div style={{ marginTop: '20px', borderTop: '2px solid #333', paddingTop: '10px', textAlign: 'left' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', fontSize: '11px' }}>
                   <div>
-                    <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '10px' }}>Emergency Help-Line Number</div>
+                    <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '10px' }}>Emergency Help-Line</div>
                     <p>PCR Kishtwar - +91 9906154100</p>
-                    <p>Control Room DC Office - +91 9484217492</p>
+                    <p>Control Room - +91 9484217492</p>
                   </div>
-                  <div>
-                    <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '10px' }}>Timing of Journey</div>
-                    <p><strong>DEPARTURE</strong>: 05:00 AM to 05:00 PM</p>
-                    <p><strong>ARRIVAL</strong>: 04:30 AM to 04:30 PM</p>
+                  <div style={{ textAlign: 'right' }}>
+                     <p style={{ fontWeight: 'bold', fontSize: '12px', margin: '0 0 5px 0' }}>Happy Yatra</p>
+                     <p>District Administration Kishtwar</p>
                   </div>
                 </div>
               </div>

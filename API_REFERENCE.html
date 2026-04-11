@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Reference | Shri Machail Mata Yatra</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #ff6f00; /* Spiritual Orange */
+            --primary-light: #ffb74d;
+            --bg-dark: #0f172a;
+            --bg-card: #1e293b;
+            --text-main: #f8fafc;
+            --text-dim: #94a3b8;
+            --sidebar-width: 300px;
+            --accent-gold: #fbbf24;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            line-height: 1.6;
+            display: flex;
+        }
+
+        /* Sidebar */
+        aside {
+            width: var(--sidebar-width);
+            background: #1e293b77;
+            backdrop-filter: blur(10px);
+            border-right: 1px solid rgba(255,255,255,0.1);
+            height: 100vh;
+            position: fixed;
+            padding: 40px 20px;
+            overflow-y: auto;
+        }
+
+        .logo {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--primary);
+            margin-bottom: 40px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo span {
+            color: var(--accent-gold);
+        }
+
+        nav ul {
+            list-style: none;
+        }
+
+        nav li {
+            margin-bottom: 10px;
+        }
+
+        nav a {
+            text-decoration: none;
+            color: var(--text-dim);
+            font-size: 15px;
+            display: block;
+            padding: 8px 12px;
+            border-radius: 8px;
+            transition: 0.2s;
+        }
+
+        nav a:hover, nav a.active {
+            background: rgba(255, 111, 0, 0.1);
+            color: var(--primary-light);
+        }
+
+        /* Main Content */
+        main {
+            margin-left: var(--sidebar-width);
+            flex-grow: 1;
+            padding: 60px 80px;
+            max-width: 1200px;
+        }
+
+        section {
+            margin-bottom: 80px;
+            scroll-margin-top: 60px;
+        }
+
+        h1 { font-size: 42px; margin-bottom: 20px; color: white; }
+        h2 { font-size: 28px; margin-bottom: 20px; color: var(--primary-light); border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; }
+        h3 { font-size: 20px; margin-bottom: 15px; color: var(--accent-gold); }
+
+        p { margin-bottom: 20px; color: var(--text-dim); font-size: 16px; }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-right: 10px;
+        }
+        .badge-get { background: #10b98122; color: #10b981; border: 1px solid #10b98144; }
+        .badge-post { background: #3b82f622; color: #3b82f6; border: 1px solid #3b82f644; }
+
+        .endpoint-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            align-items: start;
+        }
+
+        .code-block {
+            background: #000;
+            border-radius: 12px;
+            padding: 20px;
+            position: relative;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .code-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            font-size: 12px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        pre {
+            font-family: 'Fira Code', monospace;
+            font-size: 13px;
+            color: #d1d5db;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+
+        .property-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+
+        .property-table th {
+            text-align: left;
+            font-size: 13px;
+            color: var(--text-dim);
+            padding: 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .property-table td {
+            padding: 12px 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            font-size: 14px;
+        }
+
+        .prop-name { color: var(--accent-gold); font-family: 'Fira Code', monospace; font-weight: 500; }
+        .prop-type { color: #94a3b8; font-size: 12px; }
+        .required { color: #ef4444; font-size: 11px; margin-left: 5px; }
+
+        @media (max-width: 1024px) {
+            .endpoint-container { grid-template-columns: 1fr; }
+            aside { display: none; }
+            main { margin-left: 0; padding: 40px 20px; }
+        }
+
+        .shimmer {
+            background: linear-gradient(90deg, var(--bg-dark) 25%, #1e293b 50%, var(--bg-dark) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+    </style>
+</head>
+<body>
+
+<aside>
+    <div class="logo">
+        🕉️ Shri Machail <span>Mata</span>
+    </div>
+    <nav>
+        <ul>
+            <li><a href="#intro" class="active">Introduction</a></li>
+            <li><a href="#authentication">Authentication</a></li>
+            <li><a href="#base-urls">Base URLs</a></li>
+            <li><a href="#search">Search Bookings</a></li>
+            <li><a href="#booking-details">Booking Details</a></li>
+            <li><a href="#errors">Error Codes</a></li>
+        </ul>
+    </nav>
+</aside>
+
+<main>
+    <section id="intro">
+        <h1>External API Reference</h1>
+        <p>Integrate your applications with the <strong>Shri Machail Mata Yatra</strong> ecosystem. Our API provides real-time access to pilgrim booking data and registration verification.</p>
+    </section>
+
+    <section id="authentication">
+        <h2>Authentication</h2>
+        <p>Pass your unique security key in the <code>x-api-key</code> header for all requests.</p>
+        <div class="code-block">
+            <div class="code-header"><span>Example Header</span></div>
+            <pre>x-api-key: 77bf06e49bcf1eb4874a15e0af8a9fd6ebb10aa3720bfa1b</pre>
+        </div>
+    </section>
+
+    <section id="base-urls">
+        <h2>Base URLs</h2>
+        <p>Use the following endpoints based on your development stage.</p>
+        <table class="property-table">
+            <tr><td><strong>Production</strong></td><td><code>https://shrimachailmatayatra.com/api/v1/external</code></td></tr>
+            <tr><td><strong>Local Dev</strong></td><td><code>http://localhost:5001/api/v1/external</code></td></tr>
+        </table>
+    </section>
+
+    <section id="search">
+        <h2>Search Bookings</h2>
+        <p>Retrieve all bookings made by a specific pilgrim via mobile number.</p>
+        
+        <div class="endpoint-container">
+            <div class="details">
+                <h3>Request Details</h3>
+                <span class="badge badge-get">GET</span> <code>/search</code>
+                
+                <table class="property-table" style="margin-top:20px">
+                    <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+                    <tr>
+                        <td><span class="prop-name">mobile</span><span class="required">req</span></td>
+                        <td><span class="prop-type">String</span></td>
+                        <td>10-digit mobile number.</td>
+                    </tr>
+                </table>
+            </div>
+            
+            <div class="code-block">
+                <div class="code-header"><span>Response Example</span></div>
+<pre>{
+  "success": true,
+  "user": { "name": "...", "mobile": "..." },
+  "bookings": [
+    {
+      "referenceId": "MATA/2026/0123",
+      "darshanDate": "2026-05-20",
+      "totalMembers": 4
+    }
+  ]
+}</pre>
+            </div>
+        </div>
+    </section>
+
+    <section id="booking-details">
+        <h2>Get Booking Details</h2>
+        <p>Fetch comprehensive details including all group members for a specific booking.</p>
+        
+        <div class="endpoint-container">
+            <div class="details">
+                <h3>Request Details</h3>
+                <span class="badge badge-get">GET</span> <code>/booking/:referenceId</code>
+                
+                <table class="property-table" style="margin-top:20px">
+                    <tr><th>ID Variable</th><th>Type</th><th>Description</th></tr>
+                    <tr>
+                        <td><span class="prop-name">referenceId</span></td>
+                        <td><span class="prop-type">String</span></td>
+                        <td>The unique Reference ID.</td>
+                    </tr>
+                </table>
+            </div>
+            
+            <div class="code-block">
+                <div class="code-header"><span>Response Example</span></div>
+<pre>{
+  "success": true,
+  "data": {
+    "referenceId": "MATA/2026/0123",
+    "members": [
+        { "name": "Aditya", "regNo": "..." }
+    ]
+  }
+}</pre>
+            </div>
+        </div>
+    </section>
+
+    <section id="errors">
+        <h2>Errors</h2>
+        <table class="property-table">
+            <tr><th>Code</th><th>Description</th></tr>
+            <tr><td><span class="prop-name">401</span></td><td>Unauthorized. API key is missing or invalid.</td></tr>
+            <tr><td><span class="prop-name">403</span></td><td>Forbidden. Scope permissions issue.</td></tr>
+            <tr><td><span class="prop-name">404</span></td><td>Not Found. Data does not exist.</td></tr>
+        </table>
+    </section>
+
+    <footer style="margin-top: 100px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.05); color: var(--text-dim); font-size: 13px;">
+        © 2026 Shri Machail Mata Yatra Development Team. Confidential - Internal Partner Use Only.
+    </footer>
+</main>
+
+<script>
+    // Simple smooth scroll and active state
+    const links = document.querySelectorAll('nav a');
+    const sections = document.querySelectorAll('section');
+
+    window.onscroll = () => {
+        let current = "";
+        sections.forEach((section) => {
+            const sectionTop = section.offsetTop;
+            if (pageYOffset >= sectionTop - 100) {
+                current = section.getAttribute("id");
+            }
+        });
+
+        links.forEach((a) => {
+            a.classList.remove("active");
+            if (a.getAttribute("href").includes(current)) {
+                a.classList.add("active");
+            }
+        });
+    };
+</script>
+
+</body>
+</html>

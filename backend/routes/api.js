@@ -177,7 +177,7 @@ router.post('/send-otp', (req, res) => {
   // Simulating an OTP send. For testing, it's always '123456'
   const otp = '123456';
   console.log(`[MOCK] Sending OTP ${otp} to ${mobile}`);
-  res.json({ message: 'OTP sent successfully', otp: '123456' }); // In production, don't return the OTP
+  res.json({ message: 'OTP sent successfully', otp: '123456' });
 });
 
 // Endpoint: Member Registration & Booking
@@ -209,22 +209,60 @@ router.post('/book', async (req, res) => {
     }
 
     // 3. Create Booking
-    const bookingCount = await Booking.countDocuments({ referenceId: { $regex: /^MATA\/2026\// } });
-    const nextSeq = (bookingCount + 1).toString().padStart(4, '0');
-    const referenceId = `MATA/2026/${nextSeq}`;
+    // Find the highest sequence number used so far across all 2026 bookings
+    const bookings2026 = await Booking.find({ referenceId: { $regex: /^MATA\/2026\// } });
+    let maxSeq = 0;
 
-    // Map members to include sequential regNo
-    const membersWithRegNo = members.map((m, index) => ({
-      ...m,
-      regNo: `${referenceId}/M${index + 1}`
-    }));
+    bookings2026.forEach(b => {
+      if (b.members && b.members.length > 0) {
+        b.members.forEach(m => {
+          if (m.regNo) {
+            const parts = m.regNo.split('/');
+            if (parts.length >= 3) {
+              const seqNum = parseInt(parts[2]);
+              if (!isNaN(seqNum) && seqNum > maxSeq) {
+                maxSeq = seqNum;
+              }
+            }
+          }
+        });
+      }
+    });
+
+    let currentSeq = maxSeq;
+
+    // Assign sequential regNo to each member
+    const allMembers = [];
+    
+    // Primary member first
+    currentSeq++;
+    const primaryRegNo = `MATA/2026/${currentSeq.toString().padStart(4, '0')}`;
+    allMembers.push({
+      name: user.name,
+      age: user.age,
+      mobile: user.mobile,
+      gender: user.gender,
+      photo: user.photo,
+      regNo: primaryRegNo
+    });
+
+    // Co-pilgrims
+    members.forEach((m) => {
+      currentSeq++;
+      allMembers.push({
+        ...m,
+        regNo: `MATA/2026/${currentSeq.toString().padStart(4, '0')}`
+      });
+    });
+
+    const referenceId = primaryRegNo; // Booking reference is the primary user's regNo
 
     const newBooking = new Booking({
       referenceId,
       primaryUserMobile: user.mobile,
       darshanDate,
-      members: membersWithRegNo,
-      totalMembers: totalNewBookings
+      members: allMembers,
+      totalMembers: allMembers.length
     });
     await newBooking.save();
 
@@ -237,7 +275,7 @@ router.post('/book', async (req, res) => {
       await newSlot.save();
     }
 
-    res.json({ success: true, referenceId, message: 'Booking confirmed' });
+    res.json({ success: true, referenceId, members: allMembers, message: 'Booking confirmed' });
 
   } catch (err) {
     res.status(500).json({ message: 'Error processing booking', error: err.message });

@@ -7,6 +7,8 @@ import AdminPanel from './AdminPanel';
 const API_BASE = '/api';
 
 function UserPortal() {
+  const today = new Date().toISOString().split('T')[0];
+  
   const [formData, setFormData] = useState({
     name: '',
     mobile: '',
@@ -15,7 +17,7 @@ function UserPortal() {
     address: '', // New field
     age: '',
     gender: 'Male',
-    darshanDate: ''
+    darshanDate: today
   });
   const [members, setMembers] = useState([]);
   const [slots, setSlots] = useState({ total: 6000, booked: 0, available: 6000 });
@@ -25,21 +27,33 @@ function UserPortal() {
   const [isOtpVerified, setIsOtpVerified] = useState(false);
   const [message, setMessage] = useState('');
   const [bookingRef, setBookingRef] = useState('');
-
-  const today = new Date().toISOString().split('T')[0];
+  const [bookingResult, setBookingResult] = useState(null);
+  const [loadingSlots, setLoadingSlots] = useState(false);
 
   useEffect(() => {
-    if (formData.darshanDate) {
-      axios.get(`${API_BASE}/slots/${formData.darshanDate}`)
-        .then(res => setSlots(res.data))
-        .catch(err => console.error(err));
-    }
+    fetchSlots();
   }, [formData.darshanDate]);
+
+  const fetchSlots = async () => {
+    if (!formData.darshanDate) return;
+    setLoadingSlots(true);
+    try {
+      const res = await axios.get(`${API_BASE}/slots/${formData.darshanDate}`);
+      setSlots(res.data);
+    } catch (err) {
+      console.error('Error fetching slots:', err);
+    } finally {
+      setLoadingSlots(false);
+    }
+  };
 
   const handleInputChange = (e) => {
     let { name, value } = e.target;
     if (name === 'mobile') {
       value = value.replace(/\D/g, '').slice(0, 10);
+    }
+    if (name === 'age') {
+      value = value.replace(/\D/g, '').slice(0, 2);
     }
     setFormData({ ...formData, [name]: value });
     if (name === 'mobile' && value.length === 10) {
@@ -126,6 +140,9 @@ function UserPortal() {
     if (field === 'mobile') {
       value = value.replace(/\D/g, '').slice(0, 10);
     }
+    if (field === 'age') {
+      value = value.replace(/\D/g, '').slice(0, 2);
+    }
     updated[index][field] = value;
     setMembers(updated);
   };
@@ -177,6 +194,7 @@ function UserPortal() {
       const res = await axios.post(`${API_BASE}/book`, payload);
       if (res.data.success) {
         setBookingRef(res.data.referenceId);
+        setBookingResult(res.data);
         alert('Registration Successful! Ref ID: ' + res.data.referenceId);
       }
     } catch (err) {
@@ -214,12 +232,19 @@ function UserPortal() {
               />
             </div>
             <div className="input-group" style={{ justifyContent: 'end' }}>
-              <button type="button" className="btn btn-accent">CHECK SLOT</button>
+              <button 
+                type="button" 
+                className={`btn btn-accent ${loadingSlots ? 'loading' : ''}`}
+                onClick={fetchSlots}
+                disabled={loadingSlots}
+              >
+                {loadingSlots ? 'FETCHING...' : 'CHECK SLOT'}
+              </button>
             </div>
           </div>
 
           {formData.darshanDate && (
-            <div className="slot-indicator">
+            <div className={`slot-indicator ${loadingSlots ? 'opacity-50' : ''}`} style={{ transition: 'all 0.3s ease' }}>
               <div className="slot-item">
                 <span className="slot-count">{slots.total}</span>
                 <span className="slot-label">Total Slots</span>
@@ -232,6 +257,7 @@ function UserPortal() {
                 <span className="slot-count" style={{ color: '#00C851' }}>{slots.available}</span>
                 <span className="slot-label">Available Slots</span>
               </div>
+              {loadingSlots && <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', color: '#ffcc00', fontWeight: 'bold' }}>Updating...</div>}
             </div>
           )}
 
@@ -331,6 +357,7 @@ function UserPortal() {
                 placeholder="Age"
                 value={formData.age}
                 onChange={handleInputChange}
+                onInput={(e) => { if (e.target.value.length > 2) e.target.value = e.target.value.slice(0, 2); }}
                 required
                 disabled={!isOtpVerified}
               />
@@ -387,6 +414,7 @@ function UserPortal() {
                     placeholder="Age" 
                     value={member.age}
                     onChange={(e) => handleMemberChange(index, 'age', e.target.value)}
+                    onInput={(e) => { if (e.target.value.length > 2) e.target.value = e.target.value.slice(0, 2); }}
                     required
                   />
                 </div>
@@ -408,6 +436,7 @@ function UserPortal() {
                   >
                     <option value="Male">Male</option>
                     <option value="Female">Female</option>
+                    <option value="Other">Other</option>
                   </select>
                 </div>
                 <div className="input-group" style={{ gridColumn: 'span 2' }}>
@@ -436,139 +465,96 @@ function UserPortal() {
           </div>
         </form>
 
-        {bookingRef && (
-          <div className="ticket-printable" id="yatra-ticket" style={{ 
-            marginTop: '3rem', 
-            background: '#ffffcc', 
-            padding: '2rem', 
-            borderRadius: '4px', 
-            color: '#333', 
-            textAlign: 'left',
-            fontFamily: 'serif',
-            border: '2px solid #ddd',
-            maxWidth: '600px',
-            margin: '3rem auto'
-          }}>
+        {bookingRef && bookingResult?.members && (
+          <div className="tickets-container">
             <style>
               {`
                 @media print {
                   body * { visibility: hidden; }
-                  #yatra-ticket, #yatra-ticket * { visibility: visible; }
-                  #yatra-ticket { position: absolute; left: 0; top: 0; width: 100%; margin: 0; border: none; }
+                  .ticket-printable, .ticket-printable * { visibility: visible; }
+                  .ticket-printable { position: static !important; width: 100%; margin: 0 0 20px 0 !important; border: 1px solid #000; page-break-after: always; }
                   .btn-print-ticket { display: none !important; }
+                  .tickets-container { padding: 0 !important; margin: 0 !important; width: 100% !important; }
                 }
               `}
             </style>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '1.5rem' }}>
-              <div style={{ background: '#8b0000', color: 'white', padding: '10px 20px', borderRadius: '4px', textAlign: 'center', width: '250px' }}>
-                <span style={{ fontSize: '18px', fontWeight: 'bold' }}>Shri Machail Mata Yatra</span>
-                <br /><small>A journey of Faith</small>
-              </div>
-              <div style={{ textAlign: 'center', flex: 1 }}>
-                <h2 style={{ color: '#000', textShadow: 'none', margin: 0, fontSize: '24px' }}>Jai Mata Di</h2>
-              </div>
-              <div style={{ width: '100px', height: '100px', border: '1px solid #ccc' }}>
-                {(() => {
-                  const coPilgrims = members.length > 0 
-                    ? `\nCo-Pilgrims:\n${members.map(m => `- ${m.name}`).join('\n')}` 
-                    : '';
-                  const qrText = encodeURIComponent(`SHRI MACHAIL MATA YATRA 2026\n----------------------------\nReg No: ${bookingRef}\nPilgrim: ${formData.name}\nMobile: ${formData.mobile}\nDarshan Date: ${formData.darshanDate}\nTotal Members: ${members.length + 1}${coPilgrims}\nJai Mata Di!`);
-                  return <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${qrText}`} alt="QR" style={{ width: '100%' }} />;
-                })()}
-              </div>
-            </div>
-
-            <h3 style={{ color: '#d9534f', fontSize: '18px', borderBottom: '1px solid #eee', paddingBottom: '5px', marginBottom: '15px' }}>
-              Registration No. - {bookingRef}
-            </h3>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 1fr', gap: '15px', fontSize: '13px', alignItems: 'center' }}>
-              <div style={{ width: '80px', height: '80px', border: '1px solid #ccc', overflow: 'hidden' }}>
-                {formData.photo ? <img src={formData.photo} alt="Primary" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ fontSize: '10px', textAlign: 'center', marginTop: '30px' }}>No Photo</div>}
-              </div>
-              <div>
-                <p><strong>Name : </strong>{formData.name}</p>
-                <p><strong>Mobile : </strong>{formData.mobile}</p>
-                <p><strong>Email : </strong>{formData.email}</p>
-                <p><strong>Address : </strong>{formData.address}</p>
-              </div>
-              <div>
-                <p>Age : {formData.age} Year</p>
-                <p>Gender : {formData.gender.toLowerCase()}</p>
-                <p>Registration Date : {new Date().toISOString().split('T')[0]}</p>
-                <p>Darshan Date : {formData.darshanDate}</p>
-              </div>
-            </div>
-
-            {members.length > 0 && (
-              <div style={{ marginTop: '20px', borderTop: '1px solid #ccc', paddingTop: '10px' }}>
-                <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#8b0000' }}>Co-Pilgrims / Family Members</h4>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
-                  <thead>
-                    <tr style={{ background: '#f5f5f5', textAlign: 'left' }}>
-                      <th style={{ padding: '4px', border: '1px solid #ddd' }}>Reg No.</th>
-                      <th style={{ padding: '4px', border: '1px solid #ddd' }}>Photo</th>
-                      <th style={{ padding: '4px', border: '1px solid #ddd' }}>Name</th>
-                      <th style={{ padding: '4px', border: '1px solid #ddd' }}>Age</th>
-                      <th style={{ padding: '4px', border: '1px solid #ddd' }}>Gender</th>
-                      <th style={{ padding: '4px', border: '1px solid #ddd' }}>Mobile</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {members.map((m, idx) => (
-                      <tr key={idx}>
-                        <td style={{ padding: '4px', border: '1px solid #ddd', fontWeight: 'bold', color: '#8b0000' }}>{`${bookingRef}/M${idx + 1}`}</td>
-                        <td style={{ padding: '4px', border: '1px solid #ddd', textAlign: 'center' }}>
-                          {m.photo ? <img src={m.photo} alt={m.name} style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '4px', border: '1px solid #ccc' }} /> : <div style={{ padding: '10px' }}>No Photo</div>}
-                        </td>
-                        <td style={{ padding: '4px', border: '1px solid #ddd' }}>{m.name}</td>
-                        <td style={{ padding: '4px', border: '1px solid #ddd' }}>{m.age}</td>
-                        <td style={{ padding: '4px', border: '1px solid #ddd' }}>{m.gender}</td>
-                        <td style={{ padding: '4px', border: '1px solid #ddd' }}>{m.mobile}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            <div style={{ marginTop: '20px', borderTop: '2px solid #333', paddingTop: '10px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', fontSize: '11px' }}>
-                <div>
-                  <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '10px' }}>Emergency Help-Line Number</div>
-                  <p>PCR Kishtwar - +91 9906154100</p>
-                  <p>Control Room DC Office - +91 9484217492</p>
+            {bookingResult.members.map((m, idx) => (
+              <div key={idx} className="ticket-printable" style={{ 
+                marginTop: '2rem', 
+                background: '#ffffcc', 
+                padding: '2rem', 
+                borderRadius: '4px', 
+                color: '#333', 
+                textAlign: 'left',
+                fontFamily: 'serif',
+                border: '2px solid #ddd',
+                maxWidth: '600px',
+                margin: '2rem auto',
+                boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '1.5rem' }}>
+                  <div style={{ background: '#8b0000', color: 'white', padding: '10px 20px', borderRadius: '4px', textAlign: 'center', width: '220px' }}>
+                    <span style={{ fontSize: '16px', fontWeight: 'bold' }}>Shri Machail Mata Yatra</span>
+                    <br /><small>A journey of Faith</small>
+                  </div>
+                  <div style={{ textAlign: 'center', flex: 1 }}>
+                    <h2 style={{ color: '#000', textShadow: 'none', margin: 0, fontSize: '24px', border: 'none' }}>Jai Mata Di</h2>
+                  </div>
+                  <div style={{ width: '100px', height: '100px', border: '1px solid #ccc', background: 'white' }}>
+                    {(() => {
+                      const qrText = encodeURIComponent(`MACHAIL MATA YATRA 2026\n----------------------------\nReg No: ${m.regNo}\nName: ${m.name}\nMobile: ${m.mobile || formData.mobile}\nDarshan Date: ${formData.darshanDate}\nJai Mata Di!`);
+                      return <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${qrText}`} alt="QR" style={{ width: '100%' }} />;
+                    })()}
+                  </div>
                 </div>
-                <div>
-                  <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '10px' }}>Timing of Journey</div>
-                  <p><strong>DEPARTURE</strong></p>
-                  <p>Kishtwar to Gulabgarh - 05:00 AM to 05:00 PM</p>
-                  <p>Gulabgarh to Machail - 04:30 AM to 04:30 PM</p>
-                  <p><strong>ARRIVAL</strong></p>
-                  <p>Machail to Gulabgarh - 04:30 AM to 04:30 PM</p>
-                  <p>Gulabgarh to Kishtwar - 05:00 AM to 05:00 PM</p>
+
+                <div style={{ background: 'white', padding: '15px', borderRadius: '4px', border: '1px solid #eee', marginBottom: '15px' }}>
+                  <h4 style={{ margin: '0 0 10px 0', fontSize: '15px', color: '#8b0000', borderBottom: '1px solid #eee', paddingBottom: '5px' }}>Individual Registration Slip</h4>
+                  <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+                    <div style={{ width: '100px', height: '100px', border: '1px solid #ddd', borderRadius: '4px', overflow: 'hidden' }}>
+                      {m.photo ? (
+                        <img src={m.photo} alt={m.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', background: '#f5f5f5', fontSize: '10px' }}>No Photo</div>
+                      )}
+                    </div>
+                    <div style={{ flex: 1, textAlign: 'left', fontSize: '14px' }}>
+                      <p style={{ margin: '0 0 5px 0' }}><strong>Registration ID:</strong> <span style={{ color: '#d35400', fontWeight: 'bold' }}>{m.regNo}</span></p>
+                      <p style={{ margin: '0 0 5px 0' }}><strong>Name:</strong> {m.name}</p>
+                      <p style={{ margin: '0 0 5px 0' }}><strong>Gender:</strong> {m.gender}</p>
+                      <p style={{ margin: '0 0 5px 0' }}><strong>Mobile:</strong> {m.mobile || formData.mobile}</p>
+                    </div>
+                    <div style={{ flex: 1, textAlign: 'left', fontSize: '14px' }}>
+                      <p style={{ margin: '0 0 5px 0' }}><strong>Darshan Date:</strong> {formData.darshanDate}</p>
+                      <p style={{ margin: '0 0 5px 0' }}><strong>Status:</strong> <span style={{ color: 'green', fontWeight: 'bold' }}>Confirmed</span></p>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: '20px', borderTop: '2px solid #333', paddingTop: '10px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', fontSize: '11px' }}>
+                    <div>
+                      <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '10px' }}>Emergency Help-Line</div>
+                      <p>PCR Kishtwar - +91 9906154100</p>
+                      <p>Control Room - +91 9484217492</p>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                       <p style={{ fontWeight: 'bold', fontSize: '12px', margin: '0 0 5px 0' }}>Happy Yatra</p>
+                       <p>District Administration Kishtwar</p>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-
-            <div style={{ marginTop: '30px', textAlign: 'center', borderTop: '1px solid #ccc', paddingTop: '15px' }}>
-              <p style={{ fontWeight: 'bold', fontSize: '13px' }}>DISTRICT ADMINISTRATION KISHTWAR/ SHRI MACHAIL MATA YATRA CELL KISHTWAR</p>
-              <h4 style={{ margin: '10px 0', color: '#000' }}>Wishing You A Happy Yatra</h4>
-              <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', fontSize: '10px', color: '#006400', border: '1px solid #006400', padding: '5px' }}>
-                <span>#SayNoToPlastic</span>
-                <span>#MaintainCleanliness&Sanctity</span>
-                <span>#NoTobaccoZone</span>
-              </div>
-            </div>
+            ))}
 
             <div style={{ textAlign: 'center', marginTop: '20px' }} className="btn-print-ticket">
               <button 
                 onClick={() => window.print()}
                 className="btn btn-primary"
-                style={{ background: '#d9534f', border: 'none' }}
+                style={{ background: '#d9534f', border: 'none', padding: '12px 30px', fontWeight: 'bold', textShadow: 'none' }}
               >
-                PRINT TICKET
+                PRINT ALL SLIPS
               </button>
             </div>
           </div>
