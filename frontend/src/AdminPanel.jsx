@@ -53,6 +53,9 @@ const AdminPanel = () => {
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [selectedPilgrim, setSelectedPilgrim] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const [skip, setSkip] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const LIMIT = 5;
   
   // API Key Management State
   const [apiClients, setApiClients] = useState([]);
@@ -155,15 +158,33 @@ const AdminPanel = () => {
       }
     };
 
-    const fetchBookings = async () => {
+    const fetchBookings = async (isMore = false) => {
       try {
-        const res = await axios.get(`${API_BASE}/admin/bookings`);
-        setBookings(res.data);
+        const currentSkip = isMore ? skip + LIMIT : 0;
+        const res = await axios.get(`${API_BASE}/admin/bookings?limit=${LIMIT}&skip=${currentSkip}`);
+        
+        if (isMore) {
+          setBookings(prev => [...prev, ...res.data]);
+          setSkip(currentSkip);
+        } else {
+          setBookings(res.data);
+          setSkip(0);
+        }
+
+        // If we got fewer results than the limit, there are no more records to load
+        if (res.data.length < LIMIT) {
+          setHasMore(false);
+        } else {
+          setHasMore(true);
+        }
       } catch (err) {
         console.error("Error fetching bookings:", err);
         setError(`Bookings Error: ${err.response?.data?.message || err.message}`);
       }
     };
+
+    // Export this inner function so we can call it from "Load More" button
+    window.loadMoreAdminData = () => fetchBookings(true);
 
     const fetchApiClients = async () => {
       try {
@@ -434,6 +455,14 @@ const AdminPanel = () => {
             {'\u0950'} जय माता दी {'\u0950'} श्री मचैल माता यात्रा 2026 Admin Portal में आपका स्वागत है {'\u0950'} जय चंडी माता {'\u0950'}
           </div>
         </div>
+
+        {error && (
+          <div style={{ padding: '1rem', background: '#fff5f5', border: '1px solid #feb2b2', borderRadius: '0.35rem', color: '#c53030', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <ShieldAlert size={20} />
+            <span>{error}</span>
+          </div>
+        )}
+
         {activeTab === 'dashboard' ? (
           <div className="dashboard-view">
             <div className="dash-header">
@@ -446,13 +475,6 @@ const AdminPanel = () => {
               </div>
               <p>Welcome back, Admin! (Last Updated: {new Date().toLocaleTimeString()})</p>
             </div>
-
-            {error && (
-              <div style={{ padding: '1rem', background: '#fff5f5', border: '1px solid #feb2b2', borderRadius: '0.35rem', color: '#c53030', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <ShieldAlert size={20} />
-                <span>{error}</span>
-              </div>
-            )}
 
             <div className="stats-grid-admin">
               <div className="stat-card-admin card-today text-glow">
@@ -707,6 +729,18 @@ const AdminPanel = () => {
                   )}
                 </tbody>
               </table>
+              
+              {hasMore && (
+                <div style={{ textAlign: 'center', padding: '2rem' }}>
+                  <button 
+                    className="btn-print-admin" 
+                    style={{ background: '#4e73df', margin: 0 }}
+                    onClick={() => window.loadMoreAdminData()}
+                  >
+                    Load More Registrations
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         ) : (

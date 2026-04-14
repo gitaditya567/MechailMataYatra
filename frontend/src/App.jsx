@@ -33,6 +33,7 @@ function UserPortal() {
   const [bookingRef, setBookingRef] = useState('');
   const [bookingResult, setBookingResult] = useState(null);
   const [loadingSlots, setLoadingSlots] = useState(false);
+  const [isBooking, setIsBooking] = useState(false);
 
   useEffect(() => {
     fetchSlots();
@@ -185,6 +186,9 @@ function UserPortal() {
       alert('Please select a Darshan date');
       return;
     }
+    if (isBooking) return;
+
+    setIsBooking(true);
 
     try {
       const payload = {
@@ -211,6 +215,8 @@ function UserPortal() {
       console.error('Booking Error:', err);
       const errorMsg = err.response?.data?.message || err.message || 'Error occurred';
       alert('Booking Failed: ' + errorMsg);
+    } finally {
+      setIsBooking(false);
     }
   };
 
@@ -228,6 +234,7 @@ function UserPortal() {
       </div>
 
       <div className="glass-card">
+        {!bookingRef && (
         <form onSubmit={handleSubmit}>
           <div className="form-grid" style={{ gridTemplateColumns: '2fr 1fr' }}>
             <div className="input-group">
@@ -469,11 +476,12 @@ function UserPortal() {
           </div>
 
           <div style={{ textAlign: 'center', marginTop: '3rem' }}>
-            <button type="submit" className="btn btn-primary" style={{ padding: '1rem 3rem' }}>
-              BOOK DARSHAN SLOT
+            <button type="submit" className={`btn btn-primary ${isBooking ? 'loading' : ''}`} disabled={isBooking} style={{ padding: '1rem 3rem' }}>
+              {isBooking ? 'PROCESSING...' : 'BOOK DARSHAN SLOT'}
             </button>
           </div>
         </form>
+        )}
 
         {bookingRef && bookingResult?.members && (
           <div className="tickets-container">

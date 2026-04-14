@@ -15,7 +15,7 @@ const BookingSchema = new mongoose.Schema({
   darshanDate: { type: String, required: true }, // Format: YYYY-MM-DD
   members: [MemberSchema],
   totalMembers: { type: Number, default: 1 },
-  createdAt: { type: Date, default: Date.now }
+  createdAt: { type: Date, default: Date.now, index: true }
 });
 
 module.exports = mongoose.model('Booking', BookingSchema);

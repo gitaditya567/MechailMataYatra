@@ -7,6 +7,34 @@ const Admin = require('../models/Admin');
 const ApiClient = require('../models/ApiClient');
 const crypto = require('crypto');
 
+let sharp;
+try {
+  sharp = require('sharp');
+} catch (err) {
+  console.log('Sharp module not found, image compression temporarily bypassed. Please run "npm install sharp" in the backend directory.');
+}
+
+const compressImageBase64 = async (base64Str) => {
+  if (!base64Str || !sharp) return base64Str;
+  try {
+    const matches = base64Str.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+    if (!matches || matches.length !== 3) return base64Str;
+    const type = matches[1];
+    if (!type.startsWith('image/')) return base64Str;
+
+    const data = Buffer.from(matches[2], 'base64');
+    const compressedBuffer = await sharp(data)
+      .resize({ width: 800, withoutEnlargement: true })
+      .jpeg({ quality: 50 })
+      .toBuffer();
+
+    return `data:image/jpeg;base64,${compressedBuffer.toString('base64')}`;
+  } catch (error) {
+    console.error("Image compression error:", error);
+    return base64Str; // Return original perfectly unharmed if error happens
+  }
+};
+
 // Utility for formatting dates as YYYY-MM-DD
 const formatDate = (date) => new Date(date).toISOString().split('T')[0];
 
@@ -25,18 +53,21 @@ router.post('/admin/login', async (req, res) => {
   }
 });
 
-router.get('/admin/stats', async (req, res) => {
-  console.log('--- ADMIN STATS CALLED ---');
-  try {
-    const totalBookings = await Booking.countDocuments();
-    console.log('Total Bookings Found:', totalBookings);
+let statsCache = { data: null, lastFetch: 0 };
 
+router.get('/admin/stats', async (req, res) => {
+  try {
+    const now = Date.now();
+    // Cache stats for 60 seconds to prevent DB DDOS from admin polling
+    if (statsCache.data && (now - statsCache.lastFetch < 60000)) {
+       return res.json(statsCache.data);
+    }
+
+    const totalBookings = await Booking.countDocuments();
     const totalMembersAgg = await Booking.aggregate([
       { $group: { _id: null, count: { $sum: "$totalMembers" } } }
     ]);
     const totalMembers = totalMembersAgg.length > 0 ? totalMembersAgg[0].count : 0;
-    console.log('Total Members Found:', totalMembers);
-
     const totalUsers = await User.countDocuments();
 
     // Today's Stats
@@ -50,10 +81,10 @@ router.get('/admin/stats', async (req, res) => {
     ]);
     const todaysPilgrims = todaysMembersAgg.length > 0 ? todaysMembersAgg[0].count : 0;
     
-    // Recent 5 bookings (Excluding heavy photos to prevent memory issues)
+    // Recent 5 bookings
     const recentBookings = await Booking.find()
       .select('-members.photo') 
-      .sort({ createdAt: -1 })
+      .sort({ _id: -1 })
       .limit(5);
 
     // Chart Data: Last 7 days
@@ -77,9 +108,7 @@ router.get('/admin/stats', async (req, res) => {
       bookings: s.bookings || 0
     }));
 
-    console.log('Stats compilation finished successfully');
-
-    res.json({
+    const responseData = {
       totalBookings,
       totalMembers,
       totalUsers,
@@ -87,23 +116,28 @@ router.get('/admin/stats', async (req, res) => {
       todaysPilgrims,
       recentBookings,
       chartData
-    });
+    };
+
+    statsCache.data = responseData;
+    statsCache.lastFetch = Date.now();
+
+    res.json(responseData);
   } catch (err) {
-    console.error('CRITICAL ERROR IN STATS:', err);
     res.status(500).json({ message: 'Error fetching stats', error: err.message });
   }
 });
 
 router.get('/admin/bookings', async (req, res) => {
   try {
-    // Excluding photos for the list view to prevent memory limits. 
-    // Photos can be fetched individually if needed.
+    const limit = parseInt(req.query.limit) || 5;
+    const skip = parseInt(req.query.skip) || 0;
+
     const bookings = await Booking.find()
-      .select('-members.photo')
-      .sort({ createdAt: -1 })
+      .sort({ _id: -1 })
+      .skip(skip)
+      .limit(limit)
       .lean();
     
-    // Fetch all relevant users in one go (EXCLUDING PHOTOS to prevent massive JSON response)
     const mobiles = bookings.map(b => b.primaryUserMobile);
     const users = await User.find({ mobile: { $in: mobiles } }).select('-photo').lean();
     const userMap = users.reduce((acc, user) => {
@@ -111,21 +145,17 @@ router.get('/admin/bookings', async (req, res) => {
       return acc;
     }, {});
 
-    // Attach user details to bookings
     const detailedBookings = bookings.map(b => ({
       ...b,
-      primaryUser: userMap[b.primaryUserMobile] || {}
+      primaryUser: userMap[b.primaryUserMobile] || null
     }));
 
-    console.log(`Successfully fetched ${detailedBookings.length} bookings for admin`);
     res.json(detailedBookings);
   } catch (err) {
-    console.error('Error in /admin/bookings:', err);
     res.status(500).json({ message: 'Error fetching bookings', error: err.message });
   }
 });
 
-// Endpoint: Get All Slots
 router.get('/admin/slots', async (req, res) => {
   try {
     const slots = await Slot.find().sort({ date: 1 });
@@ -135,7 +165,6 @@ router.get('/admin/slots', async (req, res) => {
   }
 });
 
-// Endpoint: Update Slot Capacity
 router.post('/admin/update-slot', async (req, res) => {
   try {
     const { date, total } = req.body;
@@ -153,19 +182,14 @@ router.post('/admin/update-slot', async (req, res) => {
   }
 });
 
-// [EXISTING ENDPOINTS]
-// Endpoint: Check Slot Availability
 router.get('/slots/:date', async (req, res) => {
   try {
-    const { date } = req.params; // Expects YYYY-MM-DD
+    const { date } = req.params;
     let slot = await Slot.findOne({ date });
-
     if (!slot) {
-      // If no entry exists for this date, assume it has 6000 slots available
       slot = new Slot({ date, total: 6000, booked: 0 });
       await slot.save();
     }
-
     res.json({
       total: slot.total,
       booked: slot.booked,
@@ -176,41 +200,43 @@ router.get('/slots/:date', async (req, res) => {
   }
 });
 
-// Endpoint: Check User by Mobile
 router.get('/check-user/:mobile', async (req, res) => {
   try {
     const { mobile } = req.params;
     const user = await User.findOne({ mobile });
-    if (user) {
-      return res.json({ registered: true, user });
-    }
+    if (user) return res.json({ registered: true, user });
     res.json({ registered: false });
   } catch (err) {
     res.status(500).json({ message: 'Error checking user', error: err.message });
   }
 });
 
-// Endpoint: Mock OTP Trigger
 router.post('/send-otp', (req, res) => {
   const { mobile } = req.body;
-  // Simulating an OTP send. For testing, it's always '123456'
-  const otp = '123456';
-  console.log(`[MOCK] Sending OTP ${otp} to ${mobile}`);
   res.json({ message: 'OTP sent successfully', otp: '123456' });
 });
 
-// Endpoint: Member Registration & Booking
 router.post('/book', async (req, res) => {
   try {
     const { primaryUser, darshanDate, members } = req.body;
-    
-    // 1. Ensure user is registered (or update if exists)
+
+    // Apply fast Sharp compression to user photos to few KBs
+    if (primaryUser && primaryUser.photo) {
+      primaryUser.photo = await compressImageBase64(primaryUser.photo);
+    }
+    if (members && members.length > 0) {
+      for (let i = 0; i < members.length; i++) {
+        if (members[i].photo) {
+          members[i].photo = await compressImageBase64(members[i].photo);
+        }
+      }
+    }
+
     let user = await User.findOne({ mobile: primaryUser.mobile });
     if (!user) {
-      user = new User(primaryUser); // includes name, mobile, email, photo, age, gender
+      user = new User(primaryUser);
       await user.save();
     } else {
-      // Update existing user with potentially new info
       user.name = primaryUser.name;
       if (primaryUser.email) user.email = primaryUser.email;
       if (primaryUser.photo) user.photo = primaryUser.photo;
@@ -219,44 +245,45 @@ router.post('/book', async (req, res) => {
       await user.save();
     }
 
-    // 2. Check slot availability for that date
-    const totalNewBookings = members.length + 1; // Primary user + additional members
+    const existingBooking = await Booking.findOne({ primaryUserMobile: primaryUser.mobile, darshanDate });
+    if (existingBooking) {
+      return res.status(400).json({ message: 'A booking already exists for this mobile number on this date.' });
+    }
+
+    const totalNewBookings = members.length + 1;
     const slot = await Slot.findOne({ date: darshanDate });
-    
     if (slot && (slot.booked + totalNewBookings > slot.total)) {
       return res.status(400).json({ message: 'Not enough slots available for this date' });
     }
 
-    // 3. Create Booking
-    // Find the highest sequence number used so far across all 2026 bookings
-    const bookings2026 = await Booking.find({ referenceId: { $regex: /^MATA\/2026\// } });
+    const bookings2026 = await Booking.find({ referenceId: { $regex: /^MATA\/2026\// } }).select('referenceId members.regNo');
     let maxSeq = 0;
-
     bookings2026.forEach(b => {
-      if (b.members && b.members.length > 0) {
+      // Check primary reference ID sequence
+      if (b.referenceId) {
+        const parts = b.referenceId.split('/');
+        if (parts.length >= 3) {
+          const seqNum = parseInt(parts[2]);
+          if (!isNaN(seqNum) && seqNum > maxSeq) maxSeq = seqNum;
+        }
+      }
+      
+      // Check members sequences
+      if (b.members) {
         b.members.forEach(m => {
           if (m.regNo) {
             const parts = m.regNo.split('/');
             if (parts.length >= 3) {
               const seqNum = parseInt(parts[2]);
-              if (!isNaN(seqNum) && seqNum > maxSeq) {
-                maxSeq = seqNum;
-              }
+              if (!isNaN(seqNum) && seqNum > maxSeq) maxSeq = seqNum;
             }
           }
         });
       }
     });
 
-    let currentSeq = maxSeq;
-    if (currentSeq < 100000) {
-      currentSeq = 100000;
-    }
-
-    // Assign sequential regNo to each member
+    let currentSeq = maxSeq < 100000 ? 100000 : maxSeq;
     const allMembers = [];
-    
-    // Primary member first
     currentSeq++;
     const primaryRegNo = `MATA/2026/${currentSeq.toString().padStart(6, '0')}`;
     allMembers.push({
@@ -268,19 +295,13 @@ router.post('/book', async (req, res) => {
       regNo: primaryRegNo
     });
 
-    // Co-pilgrims
     members.forEach((m) => {
       currentSeq++;
-      allMembers.push({
-        ...m,
-        regNo: `MATA/2026/${currentSeq.toString().padStart(6, '0')}`
-      });
+      allMembers.push({ ...m, regNo: `MATA/2026/${currentSeq.toString().padStart(6, '0')}` });
     });
 
-    const referenceId = primaryRegNo; // Booking reference is the primary user's regNo
-
     const newBooking = new Booking({
-      referenceId,
+      referenceId: primaryRegNo,
       primaryUserMobile: user.mobile,
       darshanDate,
       members: allMembers,
@@ -288,7 +309,6 @@ router.post('/book', async (req, res) => {
     });
     await newBooking.save();
 
-    // 4. Update Slot Count
     if (slot) {
       slot.booked += totalNewBookings;
       await slot.save();
@@ -297,28 +317,21 @@ router.post('/book', async (req, res) => {
       await newSlot.save();
     }
 
-    res.json({ success: true, referenceId, members: allMembers, message: 'Booking confirmed' });
-
+    res.json({ success: true, referenceId: primaryRegNo, members: allMembers, message: 'Booking confirmed' });
   } catch (err) {
     res.status(500).json({ message: 'Error processing booking', error: err.message });
   }
 });
 
-// Endpoint: Delete Booking
 router.delete('/admin/bookings/:id', async (req, res) => {
   try {
     const booking = await Booking.findById(req.params.id);
-    if (!booking) {
-      return res.status(404).json({ success: false, message: 'Booking not found' });
-    }
-
-    // Update slot count (release slots)
+    if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
     const slot = await Slot.findOne({ date: booking.darshanDate });
     if (slot) {
       slot.booked = Math.max(0, slot.booked - booking.totalMembers);
       await slot.save();
     }
-
     await Booking.findByIdAndDelete(req.params.id);
     res.json({ success: true, message: 'Booking deleted successfully' });
   } catch (err) {
@@ -326,9 +339,6 @@ router.delete('/admin/bookings/:id', async (req, res) => {
   }
 });
 
-// --- API CLIENT MANAGEMENT (ADMIN) ---
-
-// Get all API Clients
 router.get('/admin/api-clients', async (req, res) => {
   try {
     const clients = await ApiClient.find().sort({ createdAt: -1 });
@@ -338,19 +348,11 @@ router.get('/admin/api-clients', async (req, res) => {
   }
 });
 
-// Create new API Client
 router.post('/admin/api-clients', async (req, res) => {
   try {
     const { name, permissions } = req.body;
-    const apiKey = crypto.randomBytes(24).toString('hex'); // Secure random key
-    
-    const client = new ApiClient({
-      name,
-      apiKey,
-      permissions: permissions || ['read'],
-      isActive: true
-    });
-    
+    const apiKey = crypto.randomBytes(24).toString('hex');
+    const client = new ApiClient({ name, apiKey, permissions: permissions || ['read'], isActive: true });
     await client.save();
     res.json({ success: true, client });
   } catch (err) {
@@ -358,12 +360,10 @@ router.post('/admin/api-clients', async (req, res) => {
   }
 });
 
-// Toggle API Client status
 router.patch('/admin/api-clients/:id', async (req, res) => {
   try {
     const client = await ApiClient.findById(req.params.id);
     if (!client) return res.status(404).json({ success: false, message: 'Client not found' });
-    
     client.isActive = !client.isActive;
     await client.save();
     res.json({ success: true, client });
@@ -372,7 +372,6 @@ router.patch('/admin/api-clients/:id', async (req, res) => {
   }
 });
 
-// Delete/Revoke API Client
 router.delete('/admin/api-clients/:id', async (req, res) => {
   try {
     await ApiClient.findByIdAndDelete(req.params.id);
@@ -383,4 +382,3 @@ router.delete('/admin/api-clients/:id', async (req, res) => {
 });
 
 module.exports = router;
-
