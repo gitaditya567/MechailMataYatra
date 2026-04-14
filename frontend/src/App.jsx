@@ -3,6 +3,10 @@ import axios from 'axios';
 import { User, Phone, Calendar, Users, HelpCircle, X, PlusCircle, CheckCircle, ShieldCheck } from 'lucide-react';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import AdminPanel from './AdminPanel';
+import Maintenance from './Maintenance';
+
+// Toggle this to true to show the "Under Maintenance" page to users
+const MAINTENANCE_MODE = false; 
 
 const API_BASE = '/api';
 
@@ -576,7 +580,7 @@ function App() {
   return (
     <Router basename="/registration">
       <Routes>
-        <Route path="/" element={<UserPortal />} />
+        <Route path="/" element={MAINTENANCE_MODE ? <Maintenance /> : <UserPortal />} />
         <Route path="/admin" element={<AdminPanel />} />
       </Routes>
     </Router>

@@ -69,11 +69,6 @@ curl -X GET "https://shrimachailmatayatra.com/api/v1/external/search?mobile=9999
 ```json
 {
     "success": true,
-    "user": {
-        "name": "Aditya Sharma",
-        "mobile": "9999999999",
-        "email": "aditya@example.com"
-    },
     "bookings": [
         {
             "referenceId": "MATA/2026/100001",
@@ -111,14 +106,9 @@ curl -X GET "https://shrimachailmatayatra.com/api/v1/external/booking/MATA/2026/
                 "name": "Test User",
                 "age": 30,
                 "gender": "Male",
-                "regNo": "MATA/2026/100001",
-                "photo": "base64_data..."
+                "regNo": "MATA/2026/100001"
             }
-        ],
-        "primaryUser": {
-            "name": "Test User",
-            "mobile": "9999999999"
-        }
+        ]
     }
 }
 ```

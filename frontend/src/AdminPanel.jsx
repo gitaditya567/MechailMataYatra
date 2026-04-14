@@ -49,6 +49,7 @@ const AdminPanel = () => {
   const [filterDate, setFilterDate] = useState('');
   const [filterGender, setFilterGender] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [selectedPilgrim, setSelectedPilgrim] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -141,25 +142,46 @@ const AdminPanel = () => {
   const fetchData = async () => {
     // Only set loading on initial fetch to avoid flickering during polling
     if (bookings.length === 0 && activeTab === 'dashboard') setLoading(true); 
+    setError(null);
     
-    try {
-      const endpoints = [
-        axios.get(`${API_BASE}/admin/stats`),
-        axios.get(`${API_BASE}/admin/bookings`)
-      ];
+    // Fetch stats, bookings, and api-clients independently to prevent blocking
+    const fetchStats = async () => {
+      try {
+        const res = await axios.get(`${API_BASE}/admin/stats`);
+        setStats(res.data);
+      } catch (err) {
+        console.error("Error fetching stats:", err);
+        setError(`Stats Error: ${err.response?.data?.message || err.message}`);
+      }
+    };
 
-      // Also fetch API clients if that tab is active or just generally refresh it
-      endpoints.push(axios.get(`${API_BASE}/admin/api-clients`));
+    const fetchBookings = async () => {
+      try {
+        const res = await axios.get(`${API_BASE}/admin/bookings`);
+        setBookings(res.data);
+      } catch (err) {
+        console.error("Error fetching bookings:", err);
+        setError(`Bookings Error: ${err.response?.data?.message || err.message}`);
+      }
+    };
 
-      const [statsRes, bookingsRes, apiClientsRes] = await Promise.all(endpoints);
-      setStats(statsRes.data);
-      setBookings(bookingsRes.data);
-      setApiClients(apiClientsRes.data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+    const fetchApiClients = async () => {
+      try {
+        const res = await axios.get(`${API_BASE}/admin/api-clients`);
+        setApiClients(res.data);
+      } catch (err) {
+        console.error("Error fetching API clients:", err);
+      }
+    };
+
+    // Run them in parallel but don't wait for all if one fails
+    await Promise.allSettled([
+      fetchStats(),
+      fetchBookings(),
+      fetchApiClients()
+    ]);
+    
+    setLoading(false);
   };
   
   const handleDelete = async (id) => {
@@ -424,6 +446,13 @@ const AdminPanel = () => {
               </div>
               <p>Welcome back, Admin! (Last Updated: {new Date().toLocaleTimeString()})</p>
             </div>
+
+            {error && (
+              <div style={{ padding: '1rem', background: '#fff5f5', border: '1px solid #feb2b2', borderRadius: '0.35rem', color: '#c53030', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <ShieldAlert size={20} />
+                <span>{error}</span>
+              </div>
+            )}
 
             <div className="stats-grid-admin">
               <div className="stat-card-admin card-today text-glow">

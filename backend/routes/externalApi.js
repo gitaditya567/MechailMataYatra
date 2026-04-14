@@ -32,20 +32,17 @@ router.get('/stats', authExternal('read'), async (req, res) => {
 router.get(/^\/booking\/(.*)/, authExternal('read'), async (req, res) => {
   try {
     const referenceId = req.params[0];
-    const booking = await Booking.findOne({ referenceId }).lean();
+    const booking = await Booking.findOne({ referenceId }).select('-members.photo').lean();
     
     if (!booking) {
       return res.status(404).json({ success: false, message: 'Booking not found' });
     }
 
-    const user = await User.findOne({ mobile: booking.primaryUserMobile }).lean();
+    const user = await User.findOne({ mobile: booking.primaryUserMobile }).select('-photo').lean();
     
     res.json({
       success: true,
-      data: {
-        ...booking,
-        primaryUser: user || {}
-      }
+      data: booking
     });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Error fetching booking', error: err.message });
@@ -61,12 +58,14 @@ router.get('/search', authExternal('read'), async (req, res) => {
       return res.status(400).json({ success: false, message: 'Mobile number is required in query params' });
     }
 
-    const bookings = await Booking.find({ primaryUserMobile: mobile }).sort({ createdAt: -1 }).lean();
-    const user = await User.findOne({ mobile }).lean();
+    const bookings = await Booking.find({ primaryUserMobile: mobile })
+      .select('-members.photo')
+      .sort({ createdAt: -1 })
+      .lean();
+    const user = await User.findOne({ mobile }).select('-photo').lean();
 
     res.json({
       success: true,
-      user: user || null,
       bookings
     });
   } catch (err) {

@@ -25,13 +25,18 @@ router.post('/admin/login', async (req, res) => {
   }
 });
 
-// Endpoint: Admin Stats
 router.get('/admin/stats', async (req, res) => {
+  console.log('--- ADMIN STATS CALLED ---');
   try {
     const totalBookings = await Booking.countDocuments();
-    const totalMembers = await Booking.aggregate([
+    console.log('Total Bookings Found:', totalBookings);
+
+    const totalMembersAgg = await Booking.aggregate([
       { $group: { _id: null, count: { $sum: "$totalMembers" } } }
     ]);
+    const totalMembers = totalMembersAgg.length > 0 ? totalMembersAgg[0].count : 0;
+    console.log('Total Members Found:', totalMembers);
+
     const totalUsers = await User.countDocuments();
 
     // Today's Stats
@@ -45,15 +50,20 @@ router.get('/admin/stats', async (req, res) => {
     ]);
     const todaysPilgrims = todaysMembersAgg.length > 0 ? todaysMembersAgg[0].count : 0;
     
-    // Recent 5 bookings
-    const recentBookings = await Booking.find().sort({ createdAt: -1 }).limit(5);
+    // Recent 5 bookings (Excluding heavy photos to prevent memory issues)
+    const recentBookings = await Booking.find()
+      .select('-members.photo') 
+      .sort({ createdAt: -1 })
+      .limit(5);
 
-    // Chart Data: Group bookings by date for the last 7 days
+    // Chart Data: Last 7 days
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     
     const chartStats = await Booking.aggregate([
-      { $match: { createdAt: { $gte: sevenDaysAgo } } },
+      { $match: { 
+        createdAt: { $exists: true, $ne: null, $gte: sevenDaysAgo } 
+      } },
       { $group: { 
           _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }, 
           bookings: { $sum: 1 } 
@@ -64,12 +74,14 @@ router.get('/admin/stats', async (req, res) => {
 
     const chartData = chartStats.map(s => ({
       name: s._id,
-      bookings: s.bookings
+      bookings: s.bookings || 0
     }));
+
+    console.log('Stats compilation finished successfully');
 
     res.json({
       totalBookings,
-      totalMembers: totalMembers.length > 0 ? totalMembers[0].count : 0,
+      totalMembers,
       totalUsers,
       todaysBookings,
       todaysPilgrims,
@@ -77,18 +89,23 @@ router.get('/admin/stats', async (req, res) => {
       chartData
     });
   } catch (err) {
+    console.error('CRITICAL ERROR IN STATS:', err);
     res.status(500).json({ message: 'Error fetching stats', error: err.message });
   }
 });
 
-// Endpoint: Get All Bookings
 router.get('/admin/bookings', async (req, res) => {
   try {
-    const bookings = await Booking.find().sort({ createdAt: -1 }).lean();
+    // Excluding photos for the list view to prevent memory limits. 
+    // Photos can be fetched individually if needed.
+    const bookings = await Booking.find()
+      .select('-members.photo')
+      .sort({ createdAt: -1 })
+      .lean();
     
-    // Fetch all relevant users in one go
+    // Fetch all relevant users in one go (EXCLUDING PHOTOS to prevent massive JSON response)
     const mobiles = bookings.map(b => b.primaryUserMobile);
-    const users = await User.find({ mobile: { $in: mobiles } }).lean();
+    const users = await User.find({ mobile: { $in: mobiles } }).select('-photo').lean();
     const userMap = users.reduce((acc, user) => {
       acc[user.mobile] = user;
       return acc;
@@ -100,8 +117,10 @@ router.get('/admin/bookings', async (req, res) => {
       primaryUser: userMap[b.primaryUserMobile] || {}
     }));
 
+    console.log(`Successfully fetched ${detailedBookings.length} bookings for admin`);
     res.json(detailedBookings);
   } catch (err) {
+    console.error('Error in /admin/bookings:', err);
     res.status(500).json({ message: 'Error fetching bookings', error: err.message });
   }
 });
