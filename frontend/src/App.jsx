@@ -283,7 +283,7 @@ function UserPortal() {
           <div className="form-grid">
             <div className="input-group">
               <label><Phone size={16} /> Mobile Number *</label>
-              <div style={{ display: 'flex', gap: '0.5rem', width: '100%' }}>
+              <div className="input-with-button" style={{ display: 'flex', gap: '0.5rem', width: '100%' }}>
                 <input 
                   type="text" 
                   name="mobile" 
