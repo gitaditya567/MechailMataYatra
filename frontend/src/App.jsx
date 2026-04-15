@@ -283,18 +283,25 @@ function UserPortal() {
           <div className="form-grid">
             <div className="input-group">
               <label><Phone size={16} /> Mobile Number *</label>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', width: '100%' }}>
                 <input 
                   type="text" 
                   name="mobile" 
+                  style={{ flex: 1, minWidth: 0 }}
                   placeholder="Enter Mobile"
                   value={formData.mobile}
                   onChange={handleInputChange}
-                  maxLength={10}
                   required
                 />
                 {!isOtpVerified && !otpSent && (
-                  <button type="button" className="btn btn-otp" onClick={sendOtp}>OTP</button>
+                  <button 
+                    type="button" 
+                    className="btn btn-otp" 
+                    onClick={sendOtp}
+                    style={{ flexShrink: 0 }}
+                  >
+                    OTP
+                  </button>
                 )}
               </div>
               {message && <small style={{ color: '#FFD700' }}>{message}</small>}
