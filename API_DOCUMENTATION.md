@@ -106,7 +106,8 @@ curl -X GET "https://shrimachailmatayatra.com/api/v1/external/booking/MATA/2026/
                 "name": "Test User",
                 "age": 30,
                 "gender": "Male",
-                "regNo": "MATA/2026/100001"
+                "regNo": "MATA/2026/100001",
+                "photo": "data:image/jpeg;base64,/9j/4AAQSk..."
             }
         ]
     }
@@ -119,6 +120,27 @@ curl -X GET "https://shrimachailmatayatra.com/api/v1/external/booking/MATA/2026/
 
 To quickly verify your key and see the data structure, you can use the **API Tester Tool** included in this package (`api_tester.html`). 
 Simply open the file in any modern browser, enter your key, and click **Test Connection**.
+
+### Viewing Images in Postman
+Because the API returns member photos as **Base64** strings, they won't render as images natively in standard JSON views. To see the images directly in Postman:
+
+1. Open your Request tab in Postman.
+2. Go to the **Tests** tab (next to Pre-request Script).
+3. Paste the following script:
+   ```javascript
+   var template = `
+       {{#each response.data.members}}
+           <h3>Member: {{name}}</h3>
+           <img src="{{photo}}" style="max-width: 300px; border-radius: 8px;" />
+           <hr>
+       {{/each}}
+   `;
+   pm.visualizer.set(template, {
+       response: pm.response.json()
+   });
+   ```
+4. Click **Send** to make the request.
+5. In the bottom Response section, near the `Pretty` / `Raw` / `Preview` buttons, click **Visualize**. You will now see the actual photos.
 
 ---
 

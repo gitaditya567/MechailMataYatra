@@ -32,7 +32,7 @@ router.get('/stats', authExternal('read'), async (req, res) => {
 router.get(/^\/booking\/(.*)/, authExternal('read'), async (req, res) => {
   try {
     const referenceId = req.params[0];
-    const booking = await Booking.findOne({ referenceId }).select('-members.photo').lean();
+    const booking = await Booking.findOne({ referenceId }).lean();
     
     if (!booking) {
       return res.status(404).json({ success: false, message: 'Booking not found' });
