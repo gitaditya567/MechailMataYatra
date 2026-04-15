@@ -282,7 +282,7 @@ function UserPortal() {
 
           <div className="form-grid">
             <div className="input-group">
-              <label><Phone size={16} /> Mobile Number</label>
+              <label><Phone size={16} /> Mobile Number *</label>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <input 
                   type="text" 
@@ -316,7 +316,7 @@ function UserPortal() {
             )}
 
             <div className="input-group">
-              <label><User size={16} /> Full Name</label>
+              <label><User size={16} /> Full Name *</label>
               <input 
                 type="text" 
                 name="name" 
@@ -329,7 +329,7 @@ function UserPortal() {
             </div>
 
             <div className="input-group">
-              <label>Address</label>
+              <label>Address *</label>
               <input 
                 type="text" 
                 name="address" 
@@ -342,32 +342,32 @@ function UserPortal() {
             </div>
 
             <div className="input-group">
-              <label>Email ID</label>
+              <label>Email ID (Optional)</label>
               <input 
                 type="email" 
                 name="email" 
                 placeholder="example@mail.com"
                 value={formData.email}
                 onChange={handleInputChange}
-                required
                 disabled={!isOtpVerified}
               />
             </div>
 
             <div className="input-group">
-              <label>Upload Photo (Max 1MB)</label>
+              <label>Upload Photo (Max 1MB) *</label>
               <input 
                 type="file" 
                 accept="image/*"
                 onChange={handleFileChange}
                 disabled={!isOtpVerified}
                 style={{ padding: '0.4rem' }}
+                required
               />
               {formData.photo && <small style={{ color: '#00C851' }}>✓ Photo attached</small>}
             </div>
 
             <div className="input-group">
-              <label>Age</label>
+              <label>Age *</label>
               <input 
                 type="number" 
                 name="age" 
@@ -381,7 +381,7 @@ function UserPortal() {
             </div>
 
             <div className="input-group">
-              <label>Gender</label>
+              <label>Gender *</label>
               <select 
                 name="gender" 
                 value={formData.gender} 
@@ -415,7 +415,7 @@ function UserPortal() {
                 gap: '1rem'
               }}>
                 <div className="input-group">
-                  <label style={{ fontSize: '12px' }}>Member Name</label>
+                  <label style={{ fontSize: '12px' }}>Member Name *</label>
                   <input 
                     type="text" 
                     placeholder="Name" 
@@ -425,7 +425,7 @@ function UserPortal() {
                   />
                 </div>
                 <div className="input-group">
-                  <label style={{ fontSize: '12px' }}>Age</label>
+                  <label style={{ fontSize: '12px' }}>Age *</label>
                   <input 
                     type="number" 
                     placeholder="Age" 
@@ -436,7 +436,7 @@ function UserPortal() {
                   />
                 </div>
                 <div className="input-group">
-                  <label style={{ fontSize: '12px' }}>Mobile</label>
+                  <label style={{ fontSize: '12px' }}>Mobile *</label>
                   <input 
                     type="text" 
                     placeholder="Mobile" 
@@ -457,13 +457,14 @@ function UserPortal() {
                   </select>
                 </div>
                 <div className="input-group" style={{ gridColumn: 'span 2' }}>
-                  <label style={{ fontSize: '12px' }}>Upload Photo (Max 1MB)</label>
+                  <label style={{ fontSize: '12px' }}>Upload Photo (Max 1MB) *</label>
                   <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                     <input 
                       type="file" 
                       accept="image/*"
                       onChange={(e) => handleMemberFileChange(index, e)}
                       style={{ flex: 1, padding: '5px' }}
+                      required
                     />
                     {member.photo && <span style={{ color: '#00C851', fontWeight: 'bold' }}>✓ Attached</span>}
                     <button type="button" className="btn-delete" onClick={() => removeMember(index)} style={{ padding: '0.5rem', background: '#ff4444', color: 'white', border: 'none', borderRadius: '4px' }}>
