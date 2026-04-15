@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const MemberSchema = new mongoose.Schema({
   name: { type: String, required: true },
   age: { type: Number, required: true },
-  mobile: { type: String, required: true },
+  mobile: { type: String, required: false },
   gender: { type: String, required: true },
   photo: { type: String }, // New field for member photo
   regNo: { type: String } // Sequential registration number for member

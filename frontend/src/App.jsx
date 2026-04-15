@@ -436,13 +436,12 @@ function UserPortal() {
                   />
                 </div>
                 <div className="input-group">
-                  <label style={{ fontSize: '12px' }}>Mobile *</label>
+                  <label style={{ fontSize: '12px' }}>Mobile (Optional)</label>
                   <input 
                     type="text" 
                     placeholder="Mobile" 
                     value={member.mobile}
                     onChange={(e) => handleMemberChange(index, 'mobile', e.target.value)}
-                    required
                   />
                 </div>
                 <div className="input-group">
