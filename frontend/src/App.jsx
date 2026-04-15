@@ -310,14 +310,22 @@ function UserPortal() {
             {otpSent && !isOtpVerified && (
               <div className="input-group">
                 <label>Enter OTP</label>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <div className="input-with-button" style={{ display: 'flex', gap: '0.5rem', width: '100%' }}>
                   <input 
                     type="text" 
-                    placeholder="6 Digit OTP"
+                    placeholder="123456"
                     value={otpValue}
                     onChange={(e) => setOtpValue(e.target.value)}
+                    style={{ flex: 1, minWidth: 0 }}
                   />
-                  <button type="button" className="btn btn-accent" onClick={verifyOtp}>Verify</button>
+                  <button 
+                    type="button" 
+                    className="btn btn-accent" 
+                    onClick={verifyOtp}
+                    style={{ flexShrink: 0 }}
+                  >
+                    VERIFY
+                  </button>
                 </div>
               </div>
             )}
