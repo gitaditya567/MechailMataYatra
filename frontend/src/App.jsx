@@ -294,7 +294,7 @@ function UserPortal() {
                   required
                 />
                 {!isOtpVerified && !otpSent && (
-                  <button type="button" className="btn btn-primary" onClick={sendOtp}>OTP</button>
+                  <button type="button" className="btn btn-otp" onClick={sendOtp}>OTP</button>
                 )}
               </div>
               {message && <small style={{ color: '#FFD700' }}>{message}</small>}

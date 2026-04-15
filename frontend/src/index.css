@@ -124,6 +124,17 @@ input:focus, select:focus {
   color: #5D4037;
 }
 
+.btn-otp {
+  background: #FFD700 !important;
+  color: #000 !important;
+  box-shadow: 0 4px 10px rgba(255, 215, 0, 0.4) !important;
+}
+
+.btn-otp:hover {
+  background: #FFC400 !important;
+  transform: translateY(-2px);
+}
+
 .slot-indicator {
   display: flex;
   justify-content: space-around;
