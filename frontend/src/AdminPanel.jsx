@@ -37,6 +37,13 @@ import './App.css';
 
 const API_BASE = '/api';
 
+function getPhotoUrl(photo) {
+  if (!photo) return '';
+  if (photo.startsWith('data:') || photo.startsWith('http')) return photo;
+  // Prepend backend URL for file-based photos
+  return `/uploads/${photo}`;
+}
+
 const AdminPanel = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loginData, setLoginData] = useState({ username: '', password: '' });
@@ -693,7 +700,7 @@ const AdminPanel = () => {
                       <td>
                         {p.photo ? (
                           <img 
-                            src={p.photo} 
+                            src={getPhotoUrl(p.photo)} 
                             alt="Pilgrim" 
                             style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover', border: '1px solid #ddd' }} 
                           />
@@ -868,7 +875,7 @@ const AdminPanel = () => {
                 <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
                   <div style={{ width: '100px', height: '100px', border: '1px solid #ddd', borderRadius: '4px', overflow: 'hidden' }}>
                     {selectedPilgrim.photo ? (
-                      <img src={selectedPilgrim.photo} alt={selectedPilgrim.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <img src={getPhotoUrl(selectedPilgrim.photo)} alt={selectedPilgrim.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     ) : (
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', background: '#f5f5f5', fontSize: '10px' }}>No Photo</div>
                     )}
