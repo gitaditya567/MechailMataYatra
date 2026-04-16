@@ -41,7 +41,7 @@ function getPhotoUrl(photo) {
   if (!photo) return '';
   if (photo.startsWith('data:') || photo.startsWith('http')) return photo;
   // Prepend backend URL for file-based photos
-  return `/uploads/${photo}`;
+  return `${API_BASE}/uploads/${photo}`;
 }
 
 const AdminPanel = () => {
