@@ -27,25 +27,47 @@ router.get('/stats', authExternal('read'), async (req, res) => {
   }
 });
 
-// GET: Fetch booking details by Reference ID
-// Requires 'read' permission
 router.get(/^\/booking\/(.*)/, authExternal('read'), async (req, res) => {
   try {
-    const referenceId = req.params[0];
-    const booking = await Booking.findOne({ referenceId }).lean();
+    const searchId = req.params[0];
+    console.log('Fetching registration detail for ID:', searchId);
+    
+    // Find the booking that contains this referenceId OR member regNo
+    const booking = await Booking.findOne({
+      $or: [
+        { referenceId: searchId },
+        { "members.regNo": searchId }
+      ]
+    }).lean();
     
     if (!booking) {
-      return res.status(404).json({ success: false, message: 'Booking not found' });
+      return res.status(404).json({ success: false, message: 'Registration not found' });
     }
 
-    const user = await User.findOne({ mobile: booking.primaryUserMobile }).select('-photo').lean();
-    
+    // Find the specific member requested
+    const targetMember = booking.members.find(m => m.regNo === searchId) || booking.members[0];
+
+    const protocol = req.protocol;
+    const host = req.get('host');
+    const baseUrl = `${protocol}://${host}/uploads/`;
+
+    // Process photo URL for the single member
+    if (targetMember.photo && !targetMember.photo.startsWith('data:') && !targetMember.photo.startsWith('http')) {
+       targetMember.photo = `${baseUrl}${targetMember.photo}`;
+    }
+
     res.json({
       success: true,
-      data: booking
+      data: {
+        bookingId: booking._id,
+        referenceId: booking.referenceId,
+        darshanDate: booking.darshanDate,
+        primaryUserMobile: booking.primaryUserMobile,
+        member: targetMember
+      }
     });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Error fetching booking', error: err.message });
+    res.status(500).json({ success: false, message: 'Error fetching registration', error: err.message });
   }
 });
 
