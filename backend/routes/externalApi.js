@@ -51,10 +51,19 @@ router.get(/^\/booking\/(.*)/, authExternal('read'), async (req, res) => {
     const host = req.get('host');
     const baseUrl = `${protocol}://${host}/uploads/`;
 
+    // Find the primary user for address
+    const user = await User.findOne({ mobile: booking.primaryUserMobile }).lean();
+
     // Process photo URL for the single member
     if (targetMember.photo && !targetMember.photo.startsWith('data:') && !targetMember.photo.startsWith('http')) {
        targetMember.photo = `${baseUrl}${targetMember.photo}`;
     }
+
+    // Fallback for member mobile: Use primary if empty
+    const memberData = {
+      ...targetMember,
+      mobile: targetMember.mobile || booking.primaryUserMobile
+    };
 
     res.json({
       success: true,
@@ -62,8 +71,10 @@ router.get(/^\/booking\/(.*)/, authExternal('read'), async (req, res) => {
         bookingId: booking._id,
         referenceId: booking.referenceId,
         darshanDate: booking.darshanDate,
+        bookingDate: booking.createdAt,
+        address: user?.address || 'N/A',
         primaryUserMobile: booking.primaryUserMobile,
-        member: targetMember
+        member: memberData
       }
     });
   } catch (err) {
