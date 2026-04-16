@@ -288,6 +288,7 @@ router.post('/book', async (req, res) => {
       user.name = primaryUser.name;
       if (primaryUser.email) user.email = primaryUser.email;
       if (primaryUser.photo) user.photo = primaryUser.photo;
+      if (primaryUser.address) user.address = primaryUser.address;
       user.age = primaryUser.age;
       user.gender = primaryUser.gender;
       await user.save();
