@@ -6,6 +6,8 @@ const Booking = require('../models/Booking');
 const Admin = require('../models/Admin');
 const ApiClient = require('../models/ApiClient');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 
 let sharp;
 try {
@@ -32,6 +34,37 @@ const compressImageBase64 = async (base64Str) => {
   } catch (error) {
     console.error("Image compression error:", error);
     return base64Str; // Return original perfectly unharmed if error happens
+  }
+};
+
+const saveBase64Image = async (base64Str, prefix = 'photo') => {
+  if (!base64Str) return null;
+  
+  // If it's already a filename (doesn't start with data:), return it
+  if (!base64Str.startsWith('data:')) return base64Str;
+
+  try {
+    const compressedBase64 = await compressImageBase64(base64Str);
+    const matches = compressedBase64.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+    if (!matches || matches.length !== 3) return null;
+
+    const buffer = Buffer.from(matches[2], 'base64');
+    const filename = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}.jpg`;
+    
+    // Use absolute path relative to process.cwd() or similar to be safe
+    const uploadsDir = path.join(process.cwd(), 'uploads');
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+    
+    const filepath = path.join(uploadsDir, filename);
+    
+    fs.writeFileSync(filepath, buffer);
+    console.log(`[PHOTO-STORAGE] Successfully saved: ${filename}`);
+    return filename; // Return only the filename to store in DB
+  } catch (error) {
+    console.error("[PHOTO-STORAGE] Error saving image:", error);
+    return null;
   }
 };
 
@@ -145,10 +178,25 @@ router.get('/admin/bookings', async (req, res) => {
       return acc;
     }, {});
 
-    const detailedBookings = bookings.map(b => ({
-      ...b,
-      primaryUser: userMap[b.primaryUserMobile] || null
-    }));
+    const protocol = req.protocol;
+    const host = req.get('host');
+    const baseUrl = `${protocol}://${host}/uploads/`;
+
+    const detailedBookings = bookings.map(b => {
+      // Transform member photos into full URLs
+      if (b.members) {
+        b.members = b.members.map(m => {
+          if (m.photo && !m.photo.startsWith('data:')) {
+            m.photo = `${baseUrl}${m.photo}`;
+          }
+          return m;
+        });
+      }
+      return {
+        ...b,
+        primaryUser: userMap[b.primaryUserMobile] || null
+      };
+    });
 
     res.json(detailedBookings);
   } catch (err) {
@@ -220,14 +268,14 @@ router.post('/book', async (req, res) => {
   try {
     const { primaryUser, darshanDate, members } = req.body;
 
-    // Apply fast Sharp compression to user photos to few KBs
+    // Save photos as files instead of storing full base64 in DB
     if (primaryUser && primaryUser.photo) {
-      primaryUser.photo = await compressImageBase64(primaryUser.photo);
+      primaryUser.photo = await saveBase64Image(primaryUser.photo, 'user');
     }
     if (members && members.length > 0) {
       for (let i = 0; i < members.length; i++) {
         if (members[i].photo) {
-          members[i].photo = await compressImageBase64(members[i].photo);
+          members[i].photo = await saveBase64Image(members[i].photo, 'member');
         }
       }
     }
@@ -331,6 +379,18 @@ router.delete('/admin/bookings/:id', async (req, res) => {
     if (slot) {
       slot.booked = Math.max(0, slot.booked - booking.totalMembers);
       await slot.save();
+    }
+
+    // Delete associated photo files
+    if (booking.members) {
+      booking.members.forEach(m => {
+        if (m.photo && !m.photo.startsWith('data:')) {
+          const filePath = path.join(__dirname, '../uploads', m.photo);
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+        }
+      });
     }
     await Booking.findByIdAndDelete(req.params.id);
     res.json({ success: true, message: 'Booking deleted successfully' });
