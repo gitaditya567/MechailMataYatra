@@ -346,7 +346,13 @@ router.post('/book', async (req, res) => {
 
     members.forEach((m) => {
       currentSeq++;
-      allMembers.push({ ...m, regNo: `MATA/2026/${currentSeq.toString().padStart(6, '0')}` });
+      // If member mobile is empty or not provided, use primary user's mobile
+      const memberMobile = m.mobile || user.mobile;
+      allMembers.push({ 
+        ...m, 
+        mobile: memberMobile,
+        regNo: `MATA/2026/${currentSeq.toString().padStart(6, '0')}` 
+      });
     });
 
     const newBooking = new Booking({
