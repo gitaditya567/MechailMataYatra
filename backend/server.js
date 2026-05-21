@@ -8,20 +8,21 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Ensure uploads directory exists
+// 1. Static Files Serving (MOVED TO TOP)
 const uploadsDir = path.join(__dirname, 'uploads');
-// Serve static files from the 'uploads' directory
-app.use('/api/uploads', express.static(path.join(__dirname, 'uploads')));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads'))); // Fallback
+// Support multiple possible paths for photos
+app.use('/api/uploads', express.static(uploadsDir));
+app.use('/uploads', express.static(uploadsDir));
+
+// Ensure uploads directory exists
 if (!fs.existsSync(uploadsDir)){
     fs.mkdirSync(uploadsDir);
 }
 
-// Middleware
+// 2. Middleware
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
-app.use('/uploads', express.static(uploadsDir));
 
 // Routes
 const apiRoutes = require('./routes/api');

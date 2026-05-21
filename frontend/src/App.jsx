@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { User, Phone, Calendar, Users, HelpCircle, X, PlusCircle, CheckCircle, ShieldCheck } from 'lucide-react';
+import { User, Phone, Calendar, Users, HelpCircle, X, PlusCircle, CheckCircle, ShieldCheck, Camera, Image } from 'lucide-react';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import AdminPanel from './AdminPanel';
 import Maintenance from './Maintenance';
@@ -41,6 +41,116 @@ function UserPortal() {
   const [bookingResult, setBookingResult] = useState(null);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [isBooking, setIsBooking] = useState(false);
+
+  const [photoModal, setPhotoModal] = useState({
+    isOpen: false,
+    type: 'primary', // 'primary' | 'member'
+    memberIndex: null
+  });
+
+  const galleryInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const [liveCamera, setLiveCamera] = useState({ isOpen: false, stream: null });
+
+  const handlePrimaryUploadClick = () => {
+    setPhotoModal({
+      isOpen: true,
+      type: 'primary',
+      memberIndex: null
+    });
+  };
+
+  const handleMemberUploadClick = (index) => {
+    setPhotoModal({
+      isOpen: true,
+      type: 'member',
+      memberIndex: index
+    });
+  };
+
+  const triggerGallery = () => {
+    if (galleryInputRef.current) {
+      galleryInputRef.current.click();
+    }
+  };
+
+  const triggerCamera = async () => {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert("camera not show");
+        return;
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      setLiveCamera({ isOpen: true, stream });
+    } catch (error) {
+      alert("camera not show");
+    }
+  };
+
+  const captureLivePhoto = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/jpeg');
+
+      if (photoModal.type === 'primary') {
+        setFormData(prev => ({ ...prev, photo: dataUrl }));
+      } else if (photoModal.type === 'member' && photoModal.memberIndex !== null) {
+        const updated = [...members];
+        updated[photoModal.memberIndex].photo = dataUrl;
+        setMembers(updated);
+      }
+
+      closeLiveCamera();
+    }
+  };
+
+  const closeLiveCamera = () => {
+    if (liveCamera.stream) {
+      liveCamera.stream.getTracks().forEach(track => track.stop());
+    }
+    setLiveCamera({ isOpen: false, stream: null });
+    setPhotoModal({ isOpen: false, type: 'primary', memberIndex: null });
+  };
+
+  useEffect(() => {
+    if (liveCamera.isOpen && videoRef.current && liveCamera.stream) {
+      videoRef.current.srcObject = liveCamera.stream;
+      videoRef.current.play().catch(e => console.error("Error playing video:", e));
+    }
+  }, [liveCamera]);
+
+  const handleSourceFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (file.size > 1024 * 1024) {
+        alert('File size exceeds 1MB limit');
+        e.target.value = null;
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (photoModal.type === 'primary') {
+          setFormData(prev => ({ ...prev, photo: reader.result }));
+        } else if (photoModal.type === 'member' && photoModal.memberIndex !== null) {
+          const updated = [...members];
+          updated[photoModal.memberIndex].photo = reader.result;
+          setMembers(updated);
+        }
+        // Close modal
+        setPhotoModal({ isOpen: false, type: 'primary', memberIndex: null });
+      };
+      reader.readAsDataURL(file);
+    }
+    if (galleryInputRef.current) galleryInputRef.current.value = '';
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
+  };
 
   useEffect(() => {
     fetchSlots();
@@ -191,6 +301,15 @@ function UserPortal() {
     }
     if (!formData.darshanDate) {
       alert('Please select a Darshan date');
+      return;
+    }
+    if (!formData.photo) {
+      alert('Please upload your photo');
+      return;
+    }
+    const missingPhotoIdx = members.findIndex(m => !m.photo);
+    if (missingPhotoIdx !== -1) {
+      alert(`Please upload photo for member ${missingPhotoIdx + 1} (${members[missingPhotoIdx].name || 'Unnamed'})`);
       return;
     }
     if (isBooking) return;
@@ -377,15 +496,21 @@ function UserPortal() {
 
             <div className="input-group">
               <label>Upload Photo (Max 1MB) *</label>
-              <input 
-                type="file" 
-                accept="image/*"
-                onChange={handleFileChange}
-                disabled={!isOtpVerified}
-                style={{ padding: '0.4rem' }}
-                required
-              />
-              {formData.photo && <small style={{ color: '#00C851' }}>✓ Photo attached</small>}
+              <div 
+                onClick={isOtpVerified ? handlePrimaryUploadClick : undefined}
+                className={`custom-file-upload ${!isOtpVerified ? 'disabled' : ''}`}
+              >
+                <span style={{ color: formData.photo ? '#333' : '#777', fontSize: '0.95rem' }}>
+                  {formData.photo ? '✓ Photo selected' : 'Choose Photo...'}
+                </span>
+                <Camera size={18} style={{ color: isOtpVerified ? 'var(--primary)' : '#aaa' }} />
+              </div>
+              {formData.photo && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '5px' }}>
+                  <img src={formData.photo} alt="Preview" style={{ width: '40px', height: '40px', borderRadius: '4px', objectFit: 'cover', border: '1px solid var(--primary)' }} />
+                  <small style={{ color: '#00C851', fontWeight: 'bold' }}>✓ Photo attached</small>
+                </div>
+              )}
             </div>
 
             <div className="input-group">
@@ -480,15 +605,35 @@ function UserPortal() {
                 <div className="input-group" style={{ gridColumn: 'span 2' }}>
                   <label style={{ fontSize: '12px' }}>Upload Photo (Max 1MB) *</label>
                   <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    <input 
-                      type="file" 
-                      accept="image/*"
-                      onChange={(e) => handleMemberFileChange(index, e)}
-                      style={{ flex: 1, padding: '5px' }}
-                      required
-                    />
-                    {member.photo && <span style={{ color: '#00C851', fontWeight: 'bold' }}>✓ Attached</span>}
-                    <button type="button" className="btn-delete" onClick={() => removeMember(index)} style={{ padding: '0.5rem', background: '#ff4444', color: 'white', border: 'none', borderRadius: '4px' }}>
+                    <div 
+                      onClick={() => handleMemberUploadClick(index)}
+                      className="custom-file-upload"
+                      style={{
+                        flex: 1,
+                        padding: '0.5rem 1rem',
+                        borderRadius: '0.5rem',
+                        border: '1px solid var(--glass-border)',
+                        background: 'rgba(255, 255, 255, 0.9)',
+                        color: '#333',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        transition: 'all 0.3s ease'
+                      }}
+                    >
+                      <span style={{ fontSize: '14px', color: member.photo ? '#333' : '#777' }}>
+                        {member.photo ? '✓ Photo selected' : 'Choose Photo...'}
+                      </span>
+                      <Camera size={16} style={{ color: 'var(--primary)' }} />
+                    </div>
+                    {member.photo && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                        <img src={member.photo} alt="Member Preview" style={{ width: '35px', height: '35px', borderRadius: '4px', objectFit: 'cover', border: '1px solid var(--primary)' }} />
+                        <span style={{ color: '#00C851', fontWeight: 'bold', fontSize: '12px' }}>✓ Attached</span>
+                      </div>
+                    )}
+                    <button type="button" className="btn-delete" onClick={() => removeMember(index)} style={{ padding: '0.5rem', background: '#ff4444', color: 'white', border: 'none', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <X size={16} />
                     </button>
                   </div>
@@ -601,6 +746,91 @@ function UserPortal() {
         )}
       </div>
 
+      {/* Hidden file inputs for Gallery & Camera selection */}
+      <input 
+        type="file" 
+        ref={galleryInputRef} 
+        accept="image/*" 
+        style={{ display: 'none' }} 
+        onChange={handleSourceFileChange} 
+      />
+      <input 
+        type="file" 
+        ref={cameraInputRef} 
+        accept="image/*" 
+        capture="environment" 
+        style={{ display: 'none' }} 
+        onChange={handleSourceFileChange} 
+      />
+
+      {/* Photo Source Choice Modal Popup */}
+      {photoModal.isOpen && !liveCamera.isOpen && (
+        <div className="photo-modal-overlay" onClick={() => setPhotoModal({ isOpen: false, type: 'primary', memberIndex: null })}>
+          <div className="photo-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="photo-modal-title">
+              <Camera size={24} style={{ color: 'var(--accent)' }} />
+              Choose Photo Source
+            </div>
+            <p style={{ marginBottom: '1.5rem', color: '#ddd', fontSize: '0.95rem' }}>
+              Select where you want to upload the photo from:
+            </p>
+            <div className="photo-options-container">
+              <div className="photo-option-card" onClick={triggerCamera}>
+                <Camera className="photo-option-icon" size={40} />
+                <span className="photo-option-label">Camera</span>
+                <span style={{ fontSize: '0.8rem', color: '#aaa' }}>Take a new picture</span>
+              </div>
+              <div className="photo-option-card" onClick={triggerGallery}>
+                <Image className="photo-option-icon" size={40} />
+                <span className="photo-option-label">Gallery</span>
+                <span style={{ fontSize: '0.8rem', color: '#aaa' }}>Choose from library</span>
+              </div>
+            </div>
+            <button 
+              type="button" 
+              className="photo-modal-cancel-btn"
+              onClick={() => setPhotoModal({ isOpen: false, type: 'primary', memberIndex: null })}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Live Camera Modal */}
+      {liveCamera.isOpen && (
+        <div className="photo-modal-overlay">
+          <div className="photo-modal-content" style={{ width: '90%', maxWidth: '500px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <div className="photo-modal-title" style={{ marginBottom: '1rem', width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Camera size={24} style={{ color: 'var(--accent)' }} />
+                Take Photo
+              </div>
+              <button type="button" onClick={closeLiveCamera} style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer' }}>
+                <X size={24} />
+              </button>
+            </div>
+            <div style={{ width: '100%', backgroundColor: '#000', borderRadius: '8px', overflow: 'hidden', display: 'flex', justifyContent: 'center' }}>
+              <video 
+                ref={videoRef} 
+                playsInline 
+                style={{ width: '100%', maxHeight: '60vh', objectFit: 'contain' }}
+              />
+            </div>
+            <canvas ref={canvasRef} style={{ display: 'none' }} />
+            <div style={{ marginTop: '1.5rem', display: 'flex', gap: '1rem', width: '100%' }}>
+              <button 
+                type="button" 
+                className="btn btn-accent" 
+                style={{ flex: 1, padding: '1rem', fontSize: '1.1rem' }}
+                onClick={captureLivePhoto}
+              >
+                Capture Image
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
