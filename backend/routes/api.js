@@ -27,6 +27,7 @@ const compressImageBase64 = async (base64Str) => {
     const data = Buffer.from(matches[2], 'base64');
     const compressedBuffer = await sharp(data)
       .resize({ width: 800, withoutEnlargement: true })
+      .flatten({ background: '#ffffff' }) // Ensure transparent pixels (like PNGs) are flattened to white
       .jpeg({ quality: 50 })
       .toBuffer();
 
@@ -48,8 +49,14 @@ const saveBase64Image = async (base64Str, prefix = 'photo') => {
     const matches = compressedBase64.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
     if (!matches || matches.length !== 3) return null;
 
+    const mimeType = matches[1]; // e.g. "image/png" or "image/jpeg"
+    let ext = 'jpg';
+    if (mimeType === 'image/png') ext = 'png';
+    else if (mimeType === 'image/webp') ext = 'webp';
+    else if (mimeType === 'image/gif') ext = 'gif';
+
     const buffer = Buffer.from(matches[2], 'base64');
-    const filename = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}.jpg`;
+    const filename = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}.${ext}`;
     
     // Use absolute path relative to process.cwd() or similar to be safe
     const uploadsDir = path.join(process.cwd(), 'uploads');
@@ -256,6 +263,91 @@ router.get('/check-user/:mobile', async (req, res) => {
     res.json({ registered: false });
   } catch (err) {
     res.status(500).json({ message: 'Error checking user', error: err.message });
+  }
+});
+
+router.get('/admin/search-reg/:regNo', async (req, res) => {
+  try {
+    const regNo = decodeURIComponent(req.params.regNo).toUpperCase();
+    const booking = await Booking.findOne({
+      $or: [
+        { referenceId: regNo },
+        { "members.regNo": regNo }
+      ]
+    }).lean();
+    
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Registration number not found' });
+    }
+    
+    const user = await User.findOne({ mobile: booking.primaryUserMobile }).lean();
+    res.json({
+      success: true,
+      booking,
+      primaryUser: user
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Error searching registration', error: err.message });
+  }
+});
+
+// New Endpoint: Global Search (Search by mobile, name, or registration number)
+router.get('/admin/global-search', async (req, res) => {
+  try {
+    const query = req.query.q;
+    if (!query) {
+      return res.status(400).json({ success: false, message: 'Search query is required' });
+    }
+
+    const cleanQuery = decodeURIComponent(query).trim();
+    // We want a regex search that is case-insensitive
+    const regex = new RegExp(cleanQuery, 'i');
+
+    // Find bookings where referenceId, primaryUserMobile, members.name, members.mobile or members.regNo matches
+    const bookings = await Booking.find({
+      $or: [
+        { referenceId: regex },
+        { primaryUserMobile: regex },
+        { "members.name": regex },
+        { "members.mobile": regex },
+        { "members.regNo": regex }
+      ]
+    }).sort({ createdAt: -1 }).limit(50).lean();
+
+    // Map bookings to fetch primary user information for each
+    const mobiles = bookings.map(b => b.primaryUserMobile);
+    const users = await User.find({ mobile: { $in: mobiles } }).select('-photo').lean();
+    const userMap = users.reduce((acc, user) => {
+      acc[user.mobile] = user;
+      return acc;
+    }, {});
+
+    const protocol = req.protocol;
+    const host = req.get('host');
+    const baseUrl = `${protocol}://${host}/uploads/`;
+
+    // Process bookings and attach primaryUser object details
+    const detailedBookings = bookings.map(b => {
+      if (b.members) {
+        b.members = b.members.map(m => {
+          if (m.photo && !m.photo.startsWith('data:')) {
+            m.photo = `${baseUrl}${m.photo}`;
+          }
+          return m;
+        });
+      }
+      return {
+        ...b,
+        primaryUser: userMap[b.primaryUserMobile] || null
+      };
+    });
+
+    res.json({
+      success: true,
+      results: detailedBookings
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Error performing global search', error: err.message });
   }
 });
 

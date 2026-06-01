@@ -1199,3 +1199,33 @@
   from { transform: scale(0.9); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
 }
+
+/* Global Search Responsive Enhancements */
+.global-search-form {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-end;
+  width: 100%;
+}
+
+.global-search-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+@media (max-width: 1024px) {
+  .global-search-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .global-search-buttons {
+    width: 100%;
+    margin-top: 0.5rem;
+  }
+  
+  .global-search-buttons button {
+    flex: 1;
+    height: 40px !important;
+  }
+}

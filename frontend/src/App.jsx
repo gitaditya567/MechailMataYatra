@@ -17,6 +17,40 @@ function getPhotoUrl(photo) {
   return `${API_BASE}/uploads/${photo}`;
 }
 
+const compressImageBase64 = (base64Str, maxW = 1024, maxH = 1024, quality = 0.7) => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.src = base64Str;
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let w = img.width;
+      let h = img.height;
+
+      if (w > h) {
+        if (w > maxW) {
+          h = Math.round((h * maxW) / w);
+          w = maxW;
+        }
+      } else {
+        if (h > maxH) {
+          w = Math.round((w * maxH) / h);
+          h = maxH;
+        }
+      }
+
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      // Fill canvas with white background to cleanly flatten transparent PNG images
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => resolve(base64Str);
+  });
+};
+
 function UserPortal() {
   const today = new Date().toLocaleDateString('en-CA'); // Gets YYYY-MM-DD in local time
   
@@ -52,9 +86,11 @@ function UserPortal() {
   const cameraInputRef = useRef(null);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+  const activeUploadRef = useRef({ type: 'primary', index: null });
   const [liveCamera, setLiveCamera] = useState({ isOpen: false, stream: null });
 
   const handlePrimaryUploadClick = () => {
+    activeUploadRef.current = { type: 'primary', index: null };
     setPhotoModal({
       isOpen: true,
       type: 'primary',
@@ -63,6 +99,7 @@ function UserPortal() {
   };
 
   const handleMemberUploadClick = (index) => {
+    activeUploadRef.current = { type: 'member', index: index };
     setPhotoModal({
       isOpen: true,
       type: 'member',
@@ -99,11 +136,12 @@ function UserPortal() {
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const dataUrl = canvas.toDataURL('image/jpeg');
 
-      if (photoModal.type === 'primary') {
+      const { type, index } = activeUploadRef.current;
+      if (type === 'primary') {
         setFormData(prev => ({ ...prev, photo: dataUrl }));
-      } else if (photoModal.type === 'member' && photoModal.memberIndex !== null) {
+      } else if (type === 'member' && index !== null) {
         const updated = [...members];
-        updated[photoModal.memberIndex].photo = dataUrl;
+        updated[index].photo = dataUrl;
         setMembers(updated);
       }
 
@@ -129,27 +167,36 @@ function UserPortal() {
   const handleSourceFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      if (file.size > 1024 * 1024) {
-        alert('File size exceeds 1MB limit');
+      if (file.size > 20 * 1024 * 1024) {
+        alert('File size exceeds 20MB limit');
         e.target.value = null;
         return;
       }
       const reader = new FileReader();
-      reader.onloadend = () => {
-        if (photoModal.type === 'primary') {
-          setFormData(prev => ({ ...prev, photo: reader.result }));
-        } else if (photoModal.type === 'member' && photoModal.memberIndex !== null) {
+      reader.onloadend = async () => {
+        let finalImage = reader.result;
+        // Only run compression if the file is larger than 1.5MB to keep standard images lightning-fast
+        if (file.size > 1.5 * 1024 * 1024) {
+          finalImage = await compressImageBase64(reader.result);
+        }
+        
+        const { type, index } = activeUploadRef.current;
+        if (type === 'primary') {
+          setFormData(prev => ({ ...prev, photo: finalImage }));
+        } else if (type === 'member' && index !== null) {
           const updated = [...members];
-          updated[photoModal.memberIndex].photo = reader.result;
+          updated[index].photo = finalImage;
           setMembers(updated);
         }
         // Close modal
         setPhotoModal({ isOpen: false, type: 'primary', memberIndex: null });
+        
+        // Reset file input values AFTER the file has been fully processed
+        if (galleryInputRef.current) galleryInputRef.current.value = '';
+        if (cameraInputRef.current) cameraInputRef.current.value = '';
       };
       reader.readAsDataURL(file);
     }
-    if (galleryInputRef.current) galleryInputRef.current.value = '';
-    if (cameraInputRef.current) cameraInputRef.current.value = '';
   };
 
   useEffect(() => {
@@ -192,14 +239,15 @@ function UserPortal() {
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      if (file.size > 1024 * 1024) {
-        alert('File size exceeds 1MB limit');
+      if (file.size > 20 * 1024 * 1024) {
+        alert('File size exceeds 20MB limit');
         e.target.value = null;
         return;
       }
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData({ ...formData, photo: reader.result });
+      reader.onloadend = async () => {
+        const compressed = await compressImageBase64(reader.result);
+        setFormData({ ...formData, photo: compressed });
       };
       reader.readAsDataURL(file);
     }
@@ -278,15 +326,16 @@ function UserPortal() {
   const handleMemberFileChange = (index, e) => {
     const file = e.target.files[0];
     if (file) {
-      if (file.size > 1024 * 1024) {
-        alert('Member photo exceeds 1MB limit');
+      if (file.size > 20 * 1024 * 1024) {
+        alert('Member photo exceeds 20MB limit');
         e.target.value = null;
         return;
       }
       const reader = new FileReader();
-      reader.onloadend = () => {
+      reader.onloadend = async () => {
+        const compressed = await compressImageBase64(reader.result);
         const updated = [...members];
-        updated[index].photo = reader.result;
+        updated[index].photo = compressed;
         setMembers(updated);
       };
       reader.readAsDataURL(file);
@@ -355,7 +404,7 @@ function UserPortal() {
 
       <div className="spiritual-marquee" style={{ marginBottom: '2rem', maxWidth: '800px', margin: '0 auto 2rem auto', boxShadow: '0 4px 15px rgba(255, 102, 0, 0.4)' }}>
         <div className="marquee-content">
-          {'\u0950'} जय माता दी {'\u0950'} श्री मचैल माता यात्रा 2026 में आपका स्वागत है {'\u0950'} कृपया अपनी सारी जानकारी ध्यानपूर्वक भरें {'\u0950'} जय चंडी माता {'\u0950'}
+          {'\u0950'} जय माता दी {'\u0950'} श्री मचैल माता यात्रा 2026 में आपका स्वागत है {'\u0950'} कृपया अपनी सारी जानकारी ध्यानपूर्वक भरें {'\u0950'} जय चंडी माता {'\u0950'} <span className="flash-otp" style={{ color: '#FFD700', padding: '0 10px' }}>[TEST MODE] USE OTP: 123456</span> {'\u0950'}
         </div>
       </div>
 
@@ -431,11 +480,16 @@ function UserPortal() {
                 )}
               </div>
               {message && <small style={{ color: '#FFD700' }}>{message}</small>}
+              {!isOtpVerified && !otpSent && (
+                <small className="flash-otp" style={{ color: '#FFD700', marginTop: '4px' }}>
+                  * Use test OTP "123456" for verification
+                </small>
+              )}
             </div>
 
             {otpSent && !isOtpVerified && (
               <div className="input-group">
-                <label>Enter OTP</label>
+                <label>Enter OTP <span className="flash-otp" style={{ color: '#FFD700', fontSize: '0.85rem', marginLeft: '8px' }}>(Use OTP: 123456)</span></label>
                 <div className="input-with-button" style={{ display: 'flex', gap: '0.5rem', width: '100%' }}>
                   <input 
                     type="text" 
@@ -495,7 +549,7 @@ function UserPortal() {
             </div>
 
             <div className="input-group">
-              <label>Upload Photo (Max 1MB) *</label>
+              <label>Upload Photo *</label>
               <div 
                 onClick={isOtpVerified ? handlePrimaryUploadClick : undefined}
                 className={`custom-file-upload ${!isOtpVerified ? 'disabled' : ''}`}
@@ -505,9 +559,18 @@ function UserPortal() {
                 </span>
                 <Camera size={18} style={{ color: isOtpVerified ? 'var(--primary)' : '#aaa' }} />
               </div>
+              <small style={{ color: '#FFD700', fontSize: '0.85rem', fontWeight: 'bold', display: 'block', marginTop: '2px' }}>(kindly use what's taken image that is lower in size)</small>
               {formData.photo && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '5px' }}>
-                  <img src={formData.photo} alt="Preview" style={{ width: '40px', height: '40px', borderRadius: '4px', objectFit: 'cover', border: '1px solid var(--primary)' }} />
+                  <img 
+                    src={getPhotoUrl(formData.photo)} 
+                    alt="Preview" 
+                    style={{ width: '40px', height: '40px', borderRadius: '4px', objectFit: 'cover', border: '1px solid var(--primary)' }} 
+                    onError={(e) => {
+                      e.target.onerror = null;
+                      e.target.src = `https://shrimachailmatayatra.com/uploads/${formData.photo}`;
+                    }}
+                  />
                   <small style={{ color: '#00C851', fontWeight: 'bold' }}>✓ Photo attached</small>
                 </div>
               )}
@@ -603,7 +666,7 @@ function UserPortal() {
                   </select>
                 </div>
                 <div className="input-group" style={{ gridColumn: 'span 2' }}>
-                  <label style={{ fontSize: '12px' }}>Upload Photo (Max 1MB) *</label>
+                  <label style={{ fontSize: '12px' }}>Upload Photo *</label>
                   <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                     <div 
                       onClick={() => handleMemberUploadClick(index)}
@@ -629,7 +692,15 @@ function UserPortal() {
                     </div>
                     {member.photo && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                        <img src={member.photo} alt="Member Preview" style={{ width: '35px', height: '35px', borderRadius: '4px', objectFit: 'cover', border: '1px solid var(--primary)' }} />
+                        <img 
+                          src={getPhotoUrl(member.photo)} 
+                          alt="Member Preview" 
+                          style={{ width: '35px', height: '35px', borderRadius: '4px', objectFit: 'cover', border: '1px solid var(--primary)' }} 
+                          onError={(e) => {
+                            e.target.onerror = null;
+                            e.target.src = `https://shrimachailmatayatra.com/uploads/${member.photo}`;
+                          }}
+                        />
                         <span style={{ color: '#00C851', fontWeight: 'bold', fontSize: '12px' }}>✓ Attached</span>
                       </div>
                     )}
@@ -637,6 +708,7 @@ function UserPortal() {
                       <X size={16} />
                     </button>
                   </div>
+                  <small style={{ color: '#FFD700', fontSize: '11px', fontWeight: 'bold', display: 'block', marginTop: '4px' }}>(kindly use what's taken image that is lower in size)</small>
                 </div>
               </div>
             ))}
@@ -699,7 +771,17 @@ function UserPortal() {
                   <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
                     <div style={{ width: '100px', height: '100px', border: '1px solid #ddd', borderRadius: '4px', overflow: 'hidden' }}>
                       {m.photo ? (
-                        <img src={getPhotoUrl(m.photo)} alt={m.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        <img 
+                          src={getPhotoUrl(m.photo)} 
+                          alt={m.name} 
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                          onError={(e) => {
+                             e.target.onerror = null;
+                             const photoVal = m.photo || '';
+                             const filename = photoVal.substring(photoVal.lastIndexOf('/') + 1);
+                             e.target.src = `https://shrimachailmatayatra.com/uploads/${filename}`;
+                           }}
+                        />
                       ) : (
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', background: '#f5f5f5', fontSize: '10px' }}>No Photo</div>
                       )}
@@ -750,14 +832,14 @@ function UserPortal() {
       <input 
         type="file" 
         ref={galleryInputRef} 
-        accept="image/*" 
+        accept="image/png, image/jpeg, image/jpg, image/webp, image/*" 
         style={{ display: 'none' }} 
         onChange={handleSourceFileChange} 
       />
       <input 
         type="file" 
         ref={cameraInputRef} 
-        accept="image/*" 
+        accept="image/png, image/jpeg, image/jpg, image/webp, image/*" 
         capture="environment" 
         style={{ display: 'none' }} 
         onChange={handleSourceFileChange} 
@@ -772,7 +854,8 @@ function UserPortal() {
               Choose Photo Source
             </div>
             <p style={{ marginBottom: '1.5rem', color: '#ddd', fontSize: '0.95rem' }}>
-              Select where you want to upload the photo from:
+              Select where you want to upload the photo from. <br/>
+              <span style={{ color: '#FFD700', fontWeight: '600' }}>Note: kindly use what's taken image that is lower in size</span>
             </p>
             <div className="photo-options-container">
               <div className="photo-option-card" onClick={triggerCamera}>

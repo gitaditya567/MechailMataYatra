@@ -69,7 +69,112 @@ const AdminPanel = () => {
   const [newClient, setNewClient] = useState({ name: '', read: true, write: false });
   const [showKeyModal, setShowKeyModal] = useState(false);
 
-  const handleSearchPrint = () => {
+  // Global Search State
+  const [globalSearchQuery, setGlobalSearchQuery] = useState('');
+  const [lastSearchedQuery, setLastSearchedQuery] = useState('');
+  const [globalSearchResults, setGlobalSearchResults] = useState([]);
+  const [searchPilgrims, setSearchPilgrims] = useState([]);
+  const [globalSearchLoading, setGlobalSearchLoading] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
+
+  const handleGlobalSearch = async (e) => {
+    if (e) e.preventDefault();
+    const query = globalSearchQuery.trim();
+    if (!query) {
+      alert("Please enter a name or phone number to search");
+      return;
+    }
+
+    try {
+      setGlobalSearchLoading(true);
+      setHasSearched(true);
+      setLastSearchedQuery(query);
+      const res = await axios.get(`${API_BASE}/admin/global-search`, {
+        params: { q: query }
+      });
+      if (res.data.success) {
+        const results = res.data.results || [];
+        setGlobalSearchResults(results);
+        
+        // Flatten results immediately once to prevent layout blinking & flickering
+        const flattened = [];
+        const queryLower = query.toLowerCase();
+        
+        results.forEach(b => {
+          const primaryInMembers = b.members?.some(m => m.regNo === b.referenceId);
+
+          const matchesQuery = (name = '', mobile = '', regNo = '') => {
+            if (!queryLower) return true;
+            return name.toLowerCase().includes(queryLower) || 
+                   mobile.toLowerCase().includes(queryLower) || 
+                   regNo.toLowerCase().includes(queryLower);
+          };
+
+          if (b.primaryUser && !primaryInMembers) {
+            let userPhoto = b.primaryUser.photo;
+            if (userPhoto && !userPhoto.startsWith('data:') && !userPhoto.startsWith('http')) {
+              userPhoto = `${API_BASE}/uploads/${userPhoto}`;
+            }
+
+            const pilgrim = {
+              _id: b._id,
+              bookingObj: b,
+              isPrimary: true,
+              photo: userPhoto,
+              regNo: b.referenceId,
+              name: b.primaryUser.name,
+              gender: b.primaryUser.gender,
+              email: b.primaryUser.email,
+              mobile: b.primaryUserMobile,
+              darshanDate: b.darshanDate,
+              totalMembers: b.totalMembers
+            };
+            if (matchesQuery(pilgrim.name, pilgrim.mobile, pilgrim.regNo)) {
+              flattened.push(pilgrim);
+            }
+          }
+          
+          if (b.members && b.members.length > 0) {
+            b.members.forEach((m, idx) => {
+              const isActuallyPrimary = (m.regNo === b.referenceId) || (!b.primaryUser && idx === 0);
+              
+              if (isActuallyPrimary && !primaryInMembers && b.primaryUser) return;
+
+              const pilgrim = {
+                _id: isActuallyPrimary ? b._id : `${b._id}-M${idx}`,
+                bookingObj: b,
+                isPrimary: isActuallyPrimary,
+                photo: m.photo,
+                regNo: m.regNo || (idx === 0 ? b.referenceId : `${b.referenceId}/${(idx).toString().padStart(2, '0')}`),
+                name: m.name,
+                gender: m.gender,
+                email: isActuallyPrimary ? (b.primaryUser?.email || '-') : '-',
+                mobile: m.mobile || b.primaryUserMobile,
+                darshanDate: b.darshanDate,
+                totalMembers: isActuallyPrimary ? b.totalMembers : '-'
+              };
+              if (matchesQuery(pilgrim.name, pilgrim.mobile, pilgrim.regNo)) {
+                flattened.push(pilgrim);
+              }
+            });
+          }
+        });
+        setSearchPilgrims(flattened);
+      } else {
+        setGlobalSearchResults([]);
+        setSearchPilgrims([]);
+      }
+    } catch (err) {
+      console.error("Global search error:", err);
+      alert(err.response?.data?.message || "Search failed");
+      setGlobalSearchResults([]);
+      setSearchPilgrims([]);
+    } finally {
+      setGlobalSearchLoading(false);
+    }
+  };
+
+  const handleSearchPrint = async () => {
     if (!searchReg) {
       alert("Please enter a Registration Number");
       return;
@@ -109,7 +214,42 @@ const AdminPanel = () => {
         });
         setShowModal(true);
       } else {
-        alert("Registration Number not found!");
+        // 3. Fallback: Search in backend database
+        try {
+          setLoading(true);
+          const res = await axios.get(`${API_BASE}/admin/search-reg/${encodeURIComponent(fullReg)}`);
+          if (res.data.success && res.data.booking) {
+            const foundBooking = res.data.booking;
+            const primaryUser = res.data.primaryUser;
+            
+            // Find the specific member inside members array
+            const matchedMember = foundBooking.members.find(m => m.regNo?.toUpperCase() === fullReg) || foundBooking.members[0];
+            const isActuallyPrimary = (matchedMember.regNo === foundBooking.referenceId);
+
+            setSelectedBooking(foundBooking);
+            setSelectedPilgrim({
+              _id: isActuallyPrimary ? foundBooking._id : `${foundBooking._id}-M`,
+              bookingObj: foundBooking,
+              isPrimary: isActuallyPrimary,
+              photo: matchedMember.photo,
+              regNo: matchedMember.regNo,
+              name: matchedMember.name,
+              gender: matchedMember.gender,
+              email: isActuallyPrimary ? (primaryUser?.email || '-') : '-',
+              mobile: matchedMember.mobile || foundBooking.primaryUserMobile,
+              darshanDate: foundBooking.darshanDate,
+              totalMembers: isActuallyPrimary ? foundBooking.totalMembers : '-'
+            });
+            setShowModal(true);
+          } else {
+            alert("Registration Number not found!");
+          }
+        } catch (err) {
+          console.error("Search error:", err);
+          alert("Registration Number not found!");
+        } finally {
+          setLoading(false);
+        }
       }
     }
   };
@@ -565,6 +705,165 @@ const AdminPanel = () => {
               </div>
             </div>
 
+            {/* Global Search Section */}
+            <div className="search-card" style={{ marginBottom: '2rem', borderTop: '4px solid #4e73df' }}>
+              <div className="search-card-header" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
+                <div className="stat-icon-wrapper-small" style={{ background: '#4e73df' }}>
+                  <Search size={18} />
+                </div>
+                <h3 style={{ margin: 0 }}>Global Search (Search by Name / Mobile / ID)</h3>
+              </div>
+              
+              <form onSubmit={handleGlobalSearch} className="global-search-form">
+                <div className="admin-form-group" style={{ flex: 1, margin: 0 }}>
+                  <label htmlFor="globalSearchInput">Pilgrim Name, Phone Number, or Registration ID</label>
+                  <div style={{ display: 'flex', width: '100%' }}>
+                    <span style={{ 
+                      padding: '0 15px', 
+                      background: '#eaecf4', 
+                      border: '1px solid #d1d3e2', 
+                      borderRight: 'none', 
+                      borderRadius: '0.35rem 0 0 0.35rem', 
+                      color: '#4e73df', 
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      <Search size={16} />
+                    </span>
+                    <input 
+                      id="globalSearchInput"
+                      type="text" 
+                      className="admin-input"
+                      placeholder="Enter details (e.g. Aditya, 9876543210, MATA/2026/100001)" 
+                      value={globalSearchQuery}
+                      onChange={(e) => setGlobalSearchQuery(e.target.value)}
+                      style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
+                    />
+                  </div>
+                </div>
+                <div className="global-search-buttons">
+                  <button 
+                    type="submit" 
+                    className="btn-print-admin btn-glow" 
+                    style={{ width: 'auto', minWidth: '150px', background: 'linear-gradient(135deg, #4e73df 0%, #224abe 100%)', margin: 0, height: '40px' }}
+                    disabled={globalSearchLoading}
+                  >
+                    {globalSearchLoading ? 'Searching...' : 'Search'}
+                  </button>
+                  {hasSearched && (
+                    <button 
+                      type="button" 
+                      className="btn-cancel-admin"
+                      style={{ height: '40px', padding: '0 1.5rem', background: '#858796', color: 'white', border: 'none', borderRadius: '0.35rem', cursor: 'pointer', fontWeight: 600 }}
+                      onClick={() => {
+                        setGlobalSearchQuery('');
+                        setGlobalSearchResults([]);
+                        setSearchPilgrims([]);
+                        setHasSearched(false);
+                      }}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </form>
+
+              {/* Search Results Table */}
+              {hasSearched && (
+                <div style={{ marginTop: '2rem' }}>
+                  <h4 style={{ color: '#4e73df', marginBottom: '1rem', borderBottom: '1px solid #e3e6f0', paddingBottom: '0.5rem' }}>
+                    Search Results ({searchPilgrims.length} pilgrims found)
+                  </h4>
+                  
+                  {searchPilgrims.length > 0 ? (
+                    <div className="admin-table-container" style={{ borderTop: '2px solid #4e73df', maxHeight: '400px', overflowY: 'auto', overflowX: 'auto' }}>
+                      <table className="admin-table">
+                        <thead>
+                          <tr>
+                            <th>Photo</th>
+                            <th>Registration ID</th>
+                            <th>Full Name</th>
+                            <th>Gender</th>
+                            <th>Mobile No.</th>
+                            <th>Darshan Date</th>
+                            <th>Role</th>
+                            <th style={{ textAlign: 'center' }}>Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {searchPilgrims.map((p) => (
+                            <tr key={p._id} style={{ backgroundColor: p.isPrimary ? 'inherit' : '#fefaf6' }}>
+                              <td>
+                                {p.photo ? (
+                                  <img 
+                                    src={getPhotoUrl(p.photo)} 
+                                    alt="Pilgrim" 
+                                    style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover', border: '1px solid #ddd' }} 
+                                    onError={(e) => {
+                                      e.target.onerror = null;
+                                      const photoVal = p.photo || '';
+                                      const filename = photoVal.substring(photoVal.lastIndexOf('/') + 1);
+                                      e.target.src = `https://shrimachailmatayatra.com/uploads/${filename}`;
+                                    }}
+                                  />
+                                ) : (
+                                  <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: '#999' }}>No Photo</div>
+                                )}
+                              </td>
+                              <td style={{ color: p.isPrimary ? '#d35400' : '#e67300', fontWeight: 600 }}>{p.regNo}</td>
+                              <td style={{ fontWeight: 600 }}>{p.name || 'N/A'}</td>
+                              <td>{p.gender || 'N/A'}</td>
+                              <td>{p.mobile}</td>
+                              <td style={{ fontWeight: 600, color: '#2c3e50' }}>{p.darshanDate}</td>
+                              <td>
+                                <span style={{ 
+                                  padding: '2px 8px', 
+                                  background: p.isPrimary ? '#e8f5e9' : '#fff3e0', 
+                                  color: p.isPrimary ? '#2e7d32' : '#e65100', 
+                                  borderRadius: '12px', 
+                                  fontSize: '11px',
+                                  fontWeight: 'bold'
+                                }}>
+                                  {p.isPrimary ? 'Primary Booker' : 'Group Member'}
+                                </span>
+                              </td>
+                              <td style={{ textAlign: 'center' }}>
+                                <button 
+                                  className="btn-print-admin btn-glow" 
+                                  style={{ 
+                                    background: '#1cc88a', 
+                                    padding: '5px 12px', 
+                                    fontSize: '0.8rem', 
+                                    margin: 0, 
+                                    display: 'inline-flex',
+                                    width: 'auto',
+                                    gap: '4px'
+                                  }} 
+                                  onClick={() => {
+                                    setSelectedBooking(p.bookingObj);
+                                    setSelectedPilgrim(p);
+                                    setShowModal(true);
+                                  }}
+                                >
+                                  <Printer size={13} />
+                                  Print Slip
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div style={{ padding: '2rem', textAlign: 'center', background: '#fff8f2', border: '1px solid #ffe8d6', borderRadius: '6px', color: '#d35400', fontWeight: 'bold' }}>
+                      No pilgrims found matching query "{lastSearchedQuery}". Please try another name or mobile number.
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             <div className="search-grid">
               <div className="search-card card-highlight">
                 <div className="search-card-header">
@@ -703,6 +1002,12 @@ const AdminPanel = () => {
                             src={getPhotoUrl(p.photo)} 
                             alt="Pilgrim" 
                             style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover', border: '1px solid #ddd' }} 
+                            onError={(e) => {
+                              e.target.onerror = null;
+                              const photoVal = p.photo || '';
+                              const filename = photoVal.substring(photoVal.lastIndexOf('/') + 1);
+                              e.target.src = `https://shrimachailmatayatra.com/uploads/${filename}`;
+                            }}
                           />
                         ) : (
                           <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: '#999' }}>No Photo</div>
@@ -875,7 +1180,17 @@ const AdminPanel = () => {
                 <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
                   <div style={{ width: '100px', height: '100px', border: '1px solid #ddd', borderRadius: '4px', overflow: 'hidden' }}>
                     {selectedPilgrim.photo ? (
-                      <img src={getPhotoUrl(selectedPilgrim.photo)} alt={selectedPilgrim.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <img 
+                        src={getPhotoUrl(selectedPilgrim.photo)} 
+                        alt={selectedPilgrim.name} 
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                        onError={(e) => {
+                          e.target.onerror = null;
+                          const photoVal = selectedPilgrim.photo || '';
+                          const filename = photoVal.substring(photoVal.lastIndexOf('/') + 1);
+                          e.target.src = `https://shrimachailmatayatra.com/uploads/${filename}`;
+                        }}
+                      />
                     ) : (
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', background: '#f5f5f5', fontSize: '10px' }}>No Photo</div>
                     )}
