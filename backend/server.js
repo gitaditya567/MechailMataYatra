@@ -34,14 +34,26 @@ app.use('/api', apiRoutes);
 // MongoDB Connection
 const connectDB = async () => {
   try {
-    await mongoose.connect(process.env.MONGODB_URI);
-    console.log('MongoDB Connected');
+    console.log('Connecting to MongoDB...');
+    await mongoose.connect(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 5000, // Timeout after 5s if DNS or network is not ready
+    });
+    console.log('MongoDB Connected successfully');
   } catch (err) {
-    console.error('Database connection error:', err);
+    console.error('Database connection error:', err.message || err);
     console.log('Retrying to connect to MongoDB in 5 seconds...');
     setTimeout(connectDB, 5000);
   }
 };
+
+// Handle connection events
+mongoose.connection.on('error', (err) => {
+  console.error('MongoDB connection error event:', err.message || err);
+});
+
+mongoose.connection.on('disconnected', () => {
+  console.log('MongoDB disconnected. Mongoose will try to reconnect automatically.');
+});
 
 connectDB();
 
