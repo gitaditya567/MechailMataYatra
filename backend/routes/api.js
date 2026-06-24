@@ -9,6 +9,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
+
 let sharp;
 try {
   sharp = require('sharp');
@@ -45,17 +46,30 @@ const saveBase64Image = async (base64Str, prefix = 'photo') => {
   if (!base64Str.startsWith('data:')) return base64Str;
 
   try {
-    const compressedBase64 = await compressImageBase64(base64Str);
-    const matches = compressedBase64.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-    if (!matches || matches.length !== 3) return null;
+    // Validate it is a valid base64 image data URL before processing
+    const matches = base64Str.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+    if (!matches || matches.length !== 3) {
+      console.error("[PHOTO-STORAGE] Invalid base64 format");
+      return null;
+    }
 
     const mimeType = matches[1]; // e.g. "image/png" or "image/jpeg"
-    let ext = 'jpg';
-    if (mimeType === 'image/png') ext = 'png';
-    else if (mimeType === 'image/webp') ext = 'webp';
-    else if (mimeType === 'image/gif') ext = 'gif';
+    if (!mimeType.startsWith('image/')) {
+      console.error(`[PHOTO-STORAGE] Blocked non-image upload attempt with mime-type: ${mimeType}`);
+      return null;
+    }
 
-    const buffer = Buffer.from(matches[2], 'base64');
+    const compressedBase64 = await compressImageBase64(base64Str);
+    const compressedMatches = compressedBase64.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+    if (!compressedMatches || compressedMatches.length !== 3) return null;
+
+    const compressedMimeType = compressedMatches[1];
+    let ext = 'jpg';
+    if (compressedMimeType === 'image/png') ext = 'png';
+    else if (compressedMimeType === 'image/webp') ext = 'webp';
+    else if (compressedMimeType === 'image/gif') ext = 'gif';
+
+    const buffer = Buffer.from(compressedMatches[2], 'base64');
     const filename = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}.${ext}`;
     
     // Use absolute path relative to process.cwd() or similar to be safe
@@ -95,6 +109,17 @@ router.post('/admin/login', async (req, res) => {
 
 let statsCache = { data: null, lastFetch: 0 };
 
+// Helper to get start of today in IST (Asia/Kolkata)
+const getStartOfTodayIST = () => {
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' });
+  const parts = formatter.formatToParts(now);
+  const year = parts.find(p => p.type === 'year').value;
+  const month = parts.find(p => p.type === 'month').value;
+  const day = parts.find(p => p.type === 'day').value;
+  return new Date(`${year}-${month}-${day}T00:00:00+05:30`);
+};
+
 router.get('/admin/stats', async (req, res) => {
   try {
     const now = Date.now();
@@ -110,9 +135,8 @@ router.get('/admin/stats', async (req, res) => {
     const totalMembers = totalMembersAgg.length > 0 ? totalMembersAgg[0].count : 0;
     const totalUsers = await User.countDocuments();
 
-    // Today's Stats
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
+    // Today's Stats aligned to India Standard Time (IST)
+    const startOfToday = getStartOfTodayIST();
 
     const todaysBookings = await Booking.countDocuments({ createdAt: { $gte: startOfToday } });
     const todaysMembersAgg = await Booking.aggregate([
@@ -228,9 +252,17 @@ router.post('/admin/update-slot', async (req, res) => {
       slot.total = total;
       await slot.save();
     } else {
-      slot = new Slot({ date, total, booked: 0 });
+      // Calculate actual booked slots for initialization
+      const bookingsCountAgg = await Booking.aggregate([
+        { $match: { darshanDate: date } },
+        { $group: { _id: null, count: { $sum: "$totalMembers" } } }
+      ]);
+      const actualBooked = bookingsCountAgg.length > 0 ? bookingsCountAgg[0].count : 0;
+      slot = new Slot({ date, total, booked: actualBooked });
       await slot.save();
     }
+    // Invalidate stats cache on slot updates
+    statsCache = { data: null, lastFetch: 0 };
     res.json({ success: true, slot });
   } catch (err) {
     res.status(500).json({ message: 'Error updating slot', error: err.message });
@@ -240,11 +272,24 @@ router.post('/admin/update-slot', async (req, res) => {
 router.get('/slots/:date', async (req, res) => {
   try {
     const { date } = req.params;
+    
+    // Dynamically calculate actual booked slots from Booking collection
+    const bookingsCountAgg = await Booking.aggregate([
+      { $match: { darshanDate: date } },
+      { $group: { _id: null, count: { $sum: "$totalMembers" } } }
+    ]);
+    const actualBooked = bookingsCountAgg.length > 0 ? bookingsCountAgg[0].count : 0;
+
     let slot = await Slot.findOne({ date });
     if (!slot) {
-      slot = new Slot({ date, total: 6000, booked: 0 });
+      slot = new Slot({ date, total: 6000, booked: actualBooked });
+      await slot.save();
+    } else if (slot.booked !== actualBooked) {
+      // Self-heal the slot booked count if it gets out of sync
+      slot.booked = actualBooked;
       await slot.save();
     }
+
     res.json({
       total: slot.total,
       booked: slot.booked,
@@ -358,19 +403,34 @@ router.post('/send-otp', (req, res) => {
 
 router.post('/book', async (req, res) => {
   try {
-    const { primaryUser, darshanDate, members } = req.body;
+    const { primaryUser, darshanDate, members, websiteSource } = req.body;
 
-    // Save photos as files instead of storing full base64 in DB
+    // Honeypot bot protection
+    if (websiteSource && websiteSource.trim() !== "") {
+      console.warn(`[BOT-ALERT] Blocked request from IP ${req.ip} due to honeypot fill: ${websiteSource}`);
+      return res.status(400).json({ message: 'Invalid request' });
+    }
+
+    // Save photos in parallel to avoid CPU blocking and request timeouts
+    const photoPromises = [];
+
     if (primaryUser && primaryUser.photo) {
-      primaryUser.photo = await saveBase64Image(primaryUser.photo, 'user');
+      photoPromises.push((async () => {
+        primaryUser.photo = await saveBase64Image(primaryUser.photo, 'user');
+      })());
     }
+
     if (members && members.length > 0) {
-      for (let i = 0; i < members.length; i++) {
-        if (members[i].photo) {
-          members[i].photo = await saveBase64Image(members[i].photo, 'member');
+      members.forEach((m) => {
+        if (m.photo) {
+          photoPromises.push((async () => {
+            m.photo = await saveBase64Image(m.photo, 'member');
+          })());
         }
-      }
+      });
     }
+
+    await Promise.all(photoPromises);
 
     let user = await User.findOne({ mobile: primaryUser.mobile });
     if (!user) {
@@ -392,26 +452,38 @@ router.post('/book', async (req, res) => {
     }
 
     const totalNewBookings = members.length + 1;
-    const slot = await Slot.findOne({ date: darshanDate });
-    if (slot && (slot.booked + totalNewBookings > slot.total)) {
+    
+    // Check available slots dynamically from the source of truth (Booking collection)
+    const bookingsCountAgg = await Booking.aggregate([
+      { $match: { darshanDate } },
+      { $group: { _id: null, count: { $sum: "$totalMembers" } } }
+    ]);
+    const actualBooked = bookingsCountAgg.length > 0 ? bookingsCountAgg[0].count : 0;
+
+    let slot = await Slot.findOne({ date: darshanDate });
+    const slotTotal = slot ? slot.total : 6000;
+
+    if (actualBooked + totalNewBookings > slotTotal) {
       return res.status(400).json({ message: 'Not enough slots available for this date' });
     }
 
-    const bookings2026 = await Booking.find({ referenceId: { $regex: /^MATA\/2026\// } }).select('referenceId members.regNo');
+    // Fetch only the single latest booking document (sorted descending by createdAt) to get the max sequence number instantly
+    const latestBooking = await Booking.findOne({ referenceId: { $regex: /^MATA\/2026\// } })
+      .sort({ createdAt: -1 })
+      .select('referenceId members.regNo');
+
     let maxSeq = 0;
-    bookings2026.forEach(b => {
-      // Check primary reference ID sequence
-      if (b.referenceId) {
-        const parts = b.referenceId.split('/');
+    if (latestBooking) {
+      if (latestBooking.referenceId) {
+        const parts = latestBooking.referenceId.split('/');
         if (parts.length >= 3) {
           const seqNum = parseInt(parts[2]);
           if (!isNaN(seqNum) && seqNum > maxSeq) maxSeq = seqNum;
         }
       }
       
-      // Check members sequences
-      if (b.members) {
-        b.members.forEach(m => {
+      if (latestBooking.members) {
+        latestBooking.members.forEach(m => {
           if (m.regNo) {
             const parts = m.regNo.split('/');
             if (parts.length >= 3) {
@@ -421,7 +493,7 @@ router.post('/book', async (req, res) => {
           }
         });
       }
-    });
+    }
 
     let currentSeq = maxSeq < 100000 ? 100000 : maxSeq;
     const allMembers = [];
@@ -456,13 +528,17 @@ router.post('/book', async (req, res) => {
     });
     await newBooking.save();
 
+    const finalBooked = actualBooked + totalNewBookings;
     if (slot) {
-      slot.booked += totalNewBookings;
+      slot.booked = finalBooked;
       await slot.save();
     } else {
-      const newSlot = new Slot({ date: darshanDate, total: 6000, booked: totalNewBookings });
+      const newSlot = new Slot({ date: darshanDate, total: 6000, booked: finalBooked });
       await newSlot.save();
     }
+
+    // Invalidate stats cache on new bookings
+    statsCache = { data: null, lastFetch: 0 };
 
     res.json({ success: true, referenceId: primaryRegNo, members: allMembers, message: 'Booking confirmed' });
   } catch (err) {
@@ -474,9 +550,16 @@ router.delete('/admin/bookings/:id', async (req, res) => {
   try {
     const booking = await Booking.findById(req.params.id);
     if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
+    // Calculate the new booked slot count dynamically after deleting this booking
+    const bookingsCountAgg = await Booking.aggregate([
+      { $match: { darshanDate: booking.darshanDate, _id: { $ne: booking._id } } },
+      { $group: { _id: null, count: { $sum: "$totalMembers" } } }
+    ]);
+    const nextBookedCount = bookingsCountAgg.length > 0 ? bookingsCountAgg[0].count : 0;
+
     const slot = await Slot.findOne({ date: booking.darshanDate });
     if (slot) {
-      slot.booked = Math.max(0, slot.booked - booking.totalMembers);
+      slot.booked = nextBookedCount;
       await slot.save();
     }
 
@@ -492,6 +575,8 @@ router.delete('/admin/bookings/:id', async (req, res) => {
       });
     }
     await Booking.findByIdAndDelete(req.params.id);
+    // Invalidate stats cache on deletions
+    statsCache = { data: null, lastFetch: 0 };
     res.json({ success: true, message: 'Booking deleted successfully' });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Error deleting booking', error: err.message });

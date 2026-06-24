@@ -51,6 +51,33 @@ const AdminPanel = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [bookings, setBookings] = useState([]);
   const [stats, setStats] = useState({ totalBookings: 0, totalMembers: 0, totalUsers: 0, todaysBookings: 0, todaysPilgrims: 0, chartData: [] });
+  const [selectedDashboardDate, setSelectedDashboardDate] = useState(() => {
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' });
+    const parts = formatter.formatToParts(now);
+    const year = parts.find(p => p.type === 'year').value;
+    const month = parts.find(p => p.type === 'month').value;
+    const day = parts.find(p => p.type === 'day').value;
+    return `${year}-${month}-${day}`;
+  });
+  const [dashboardDateSlots, setDashboardDateSlots] = useState({ booked: 0, available: 6000, total: 6000 });
+  const [loadingDashboardSlots, setLoadingDashboardSlots] = useState(false);
+
+  const fetchDashboardSlots = async (targetDate) => {
+    if (!targetDate) return;
+    try {
+      const res = await axios.get(`${API_BASE}/slots/${targetDate}`);
+      setDashboardDateSlots(res.data);
+    } catch (err) {
+      console.error("Error fetching dashboard slots:", err);
+    }
+  };
+
+  useEffect(() => {
+    setLoadingDashboardSlots(true);
+    fetchDashboardSlots(selectedDashboardDate).finally(() => setLoadingDashboardSlots(false));
+  }, [selectedDashboardDate]);
+
   const [searchReg, setSearchReg] = useState('');
   const [exportDate, setExportDate] = useState('');
   const [filterDate, setFilterDate] = useState('');
@@ -342,11 +369,16 @@ const AdminPanel = () => {
       }
     };
 
+    const fetchSlotsData = async () => {
+      await fetchDashboardSlots(selectedDashboardDate);
+    };
+
     // Run them in parallel but don't wait for all if one fails
     await Promise.allSettled([
       fetchStats(),
       fetchBookings(),
-      fetchApiClients()
+      fetchApiClients(),
+      fetchSlotsData()
     ]);
     
     setLoading(false);
@@ -546,6 +578,31 @@ const AdminPanel = () => {
     );
   }
 
+  const downloadPDF = (elementId, filename) => {
+    const element = document.getElementById(elementId);
+    if (!element) return;
+
+    const loadAndGenerate = () => {
+      const opt = {
+        margin: 10,
+        filename: filename,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, logging: false },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+      window.html2pdf().from(element).set(opt).save();
+    };
+
+    if (!window.html2pdf) {
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+      script.onload = loadAndGenerate;
+      document.body.appendChild(script);
+    } else {
+      loadAndGenerate();
+    }
+  };
+
   const getRelativeTime = (dateStr) => {
     const diff = Math.floor((new Date() - new Date(dateStr)) / 1000);
     if (diff < 60) return 'Just now';
@@ -624,13 +681,39 @@ const AdminPanel = () => {
             </div>
 
             <div className="stats-grid-admin">
-              <div className="stat-card-admin card-today text-glow">
+              <div className="stat-card-admin card-today text-glow" style={{ minWidth: '260px' }}>
                 <div className="stat-icon-wrapper"><CreditCard size={24} /></div>
-                <div className="stat-content-admin">
-                  <span className="stat-label-admin">Today's Bookings</span>
-                  <h2 className="stat-value-admin">{stats.todaysBookings || 0}</h2>
+                <div className="stat-content-admin" style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                    <span className="stat-label-admin" style={{ margin: 0 }}>Yatra Slots Booked</span>
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '5px', background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: '4px', cursor: 'pointer' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>
+                        {selectedDashboardDate ? new Date(selectedDashboardDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'Select Date'}
+                      </span>
+                      <Calendar size={14} />
+                      <input 
+                        type="date" 
+                        value={selectedDashboardDate} 
+                        onChange={(e) => setSelectedDashboardDate(e.target.value)}
+                        style={{ 
+                          position: 'absolute', 
+                          top: 0, 
+                          left: 0, 
+                          width: '100%', 
+                          height: '100%', 
+                          opacity: 0, 
+                          cursor: 'pointer' 
+                        }} 
+                      />
+                    </div>
+                  </div>
+                  <h2 className="stat-value-admin" style={{ marginTop: '0.25rem' }}>
+                    {loadingDashboardSlots ? '...' : dashboardDateSlots.booked}
+                  </h2>
+                  <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.8)', fontWeight: '600', marginTop: '2px' }}>
+                    {loadingDashboardSlots ? 'Loading slots...' : `Available: ${dashboardDateSlots.available}`}
+                  </span>
                 </div>
-                <Activity className="trend-icon" size={16} />
               </div>
 
               <div className="stat-card-admin card-today text-glow">
@@ -1223,8 +1306,15 @@ const AdminPanel = () => {
               </div>
             </div>
             <div className="modal-footer-admin">
-               <button className="btn-print-admin" onClick={() => window.print()}>
+               <button className="btn-print-admin" onClick={() => window.print()} style={{ margin: 0, marginRight: '10px' }}>
                   <Printer size={18} /> Print Voucher
+                </button>
+                <button 
+                  className="btn-print-admin" 
+                  style={{ background: '#00C851', margin: 0, marginRight: '10px' }}
+                  onClick={() => downloadPDF('admin-receipt-view', `Slip_${selectedPilgrim.name.replace(/\s+/g, '_')}_${selectedPilgrim.regNo.replace(/\//g, '_')}.pdf`)}
+                >
+                  Download PDF
                 </button>
                 <button className="btn-cancel-admin" onClick={() => setShowModal(false)}>Close</button>
             </div>

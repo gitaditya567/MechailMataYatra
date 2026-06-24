@@ -22,3 +22,10 @@ npm-debug.log*
 .idea/
 .DS_Store
 Thumbs.db
+
+# Uploads and temporary data
+backend/uploads/
+backend/bookings_test.json
+backend/out.json
+backend/test_api.json
+

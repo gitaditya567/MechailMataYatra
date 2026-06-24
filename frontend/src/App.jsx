@@ -19,8 +19,7 @@ function getPhotoUrl(photo) {
 
 const compressImageBase64 = (base64Str, maxW = 1024, maxH = 1024, quality = 0.7) => {
   return new Promise((resolve) => {
-    const img = new Image();
-    img.src = base64Str;
+    const img = new window.Image();
     img.onload = () => {
       const canvas = document.createElement('canvas');
       let w = img.width;
@@ -48,6 +47,7 @@ const compressImageBase64 = (base64Str, maxW = 1024, maxH = 1024, quality = 0.7)
       resolve(canvas.toDataURL('image/jpeg', quality));
     };
     img.onerror = () => resolve(base64Str);
+    img.src = base64Str;
   });
 };
 
@@ -74,6 +74,7 @@ function UserPortal() {
   const [bookingRef, setBookingRef] = useState('');
   const [bookingResult, setBookingResult] = useState(null);
   const [loadingSlots, setLoadingSlots] = useState(false);
+  const [websiteSource, setWebsiteSource] = useState('');
   const [isBooking, setIsBooking] = useState(false);
 
   const [photoModal, setPhotoModal] = useState({
@@ -174,11 +175,8 @@ function UserPortal() {
       }
       const reader = new FileReader();
       reader.onloadend = async () => {
-        let finalImage = reader.result;
-        // Only run compression if the file is larger than 1.5MB to keep standard images lightning-fast
-        if (file.size > 1.5 * 1024 * 1024) {
-          finalImage = await compressImageBase64(reader.result);
-        }
+        // Always compress to 800x800 at 0.5 quality to ensure lightweight uploads (< 100KB)
+        let finalImage = await compressImageBase64(reader.result, 800, 800, 0.5);
         
         const { type, index } = activeUploadRef.current;
         if (type === 'primary') {
@@ -246,7 +244,8 @@ function UserPortal() {
       }
       const reader = new FileReader();
       reader.onloadend = async () => {
-        const compressed = await compressImageBase64(reader.result);
+        // Compress to 800x800 at 0.5 quality to ensure lightweight uploads (< 100KB)
+        const compressed = await compressImageBase64(reader.result, 800, 800, 0.5);
         setFormData({ ...formData, photo: compressed });
       };
       reader.readAsDataURL(file);
@@ -333,7 +332,8 @@ function UserPortal() {
       }
       const reader = new FileReader();
       reader.onloadend = async () => {
-        const compressed = await compressImageBase64(reader.result);
+        // Compress to 800x800 at 0.5 quality to ensure lightweight uploads (< 100KB)
+        const compressed = await compressImageBase64(reader.result, 800, 800, 0.5);
         const updated = [...members];
         updated[index].photo = compressed;
         setMembers(updated);
@@ -377,7 +377,8 @@ function UserPortal() {
           gender: formData.gender
         },
         darshanDate: formData.darshanDate,
-        members: members.map(m => ({ ...m, age: parseInt(m.age) }))
+        members: members.map(m => ({ ...m, age: parseInt(m.age) })),
+        websiteSource: websiteSource
       };
 
       const res = await axios.post(`${API_BASE}/book`, payload);
@@ -392,6 +393,31 @@ function UserPortal() {
       alert('Booking Failed: ' + errorMsg);
     } finally {
       setIsBooking(false);
+    }
+  };
+
+  const downloadPDF = (elementId, filename) => {
+    const element = document.getElementById(elementId);
+    if (!element) return;
+
+    const loadAndGenerate = () => {
+      const opt = {
+        margin: 10,
+        filename: filename,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, logging: false },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+      window.html2pdf().from(element).set(opt).save();
+    };
+
+    if (!window.html2pdf) {
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+      script.onload = loadAndGenerate;
+      document.body.appendChild(script);
+    } else {
+      loadAndGenerate();
     }
   };
 
@@ -411,6 +437,16 @@ function UserPortal() {
       <div className="glass-card">
         {!bookingRef && (
         <form onSubmit={handleSubmit}>
+          {/* Honeypot field for bot protection */}
+          <input 
+            type="text" 
+            name="website_source" 
+            value={websiteSource} 
+            onChange={(e) => setWebsiteSource(e.target.value)} 
+            style={{ display: 'none' }} 
+            tabIndex="-1" 
+            autoComplete="off" 
+          />
           <div className="form-grid" style={{ gridTemplateColumns: '2fr 1fr' }}>
             <div className="input-group">
               <label><Calendar size={16} /> Check Availability (Select Date)</label>
@@ -723,7 +759,7 @@ function UserPortal() {
         )}
 
         {bookingRef && bookingResult?.members && (
-          <div className="tickets-container">
+          <div className="tickets-container" id="all-tickets-container">
             <style>
               {`
                 @media print {
@@ -737,19 +773,28 @@ function UserPortal() {
             </style>
 
             {bookingResult.members.map((m, idx) => (
-              <div key={idx} className="ticket-printable" style={{ 
-                marginTop: '2rem', 
-                background: '#ffffcc', 
-                padding: '2rem', 
-                borderRadius: '4px', 
-                color: '#333', 
-                textAlign: 'left',
-                fontFamily: 'serif',
-                border: '2px solid #ddd',
-                maxWidth: '600px',
-                margin: '2rem auto',
-                boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
-              }}>
+              <div key={idx} style={{ maxWidth: '600px', margin: '2rem auto', position: 'relative' }}>
+                <div style={{ textAlign: 'right', marginBottom: '8px' }} className="btn-print-ticket">
+                  <button 
+                    type="button"
+                    onClick={() => downloadPDF(`ticket-card-${idx}`, `Slip_${m.name.replace(/\s+/g, '_')}_${m.regNo.replace(/\//g, '_')}.pdf`)}
+                    className="btn"
+                    style={{ background: '#00C851', color: 'white', border: 'none', padding: '6px 15px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px', borderRadius: '4px' }}
+                  >
+                    Download PDF
+                  </button>
+                </div>
+                <div id={`ticket-card-${idx}`} className="ticket-printable" style={{ 
+                  marginTop: '2rem', 
+                  background: '#ffffcc', 
+                  padding: '2rem', 
+                  borderRadius: '4px', 
+                  color: '#333', 
+                  textAlign: 'left',
+                  fontFamily: 'serif',
+                  border: '2px solid #ddd',
+                  boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+                }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '1.5rem' }}>
                   <div style={{ background: '#8b0000', color: 'white', padding: '10px 20px', borderRadius: '4px', textAlign: 'center', width: '220px' }}>
                     <span style={{ fontSize: '16px', fontWeight: 'bold' }}>Shri Machail Mata Yatra</span>
@@ -813,15 +858,23 @@ function UserPortal() {
                   </div>
                 </div>
               </div>
+            </div>
             ))}
 
-            <div style={{ textAlign: 'center', marginTop: '20px' }} className="btn-print-ticket">
+            <div style={{ textAlign: 'center', marginTop: '20px', display: 'flex', justifyContent: 'center', gap: '15px' }} className="btn-print-ticket">
               <button 
                 onClick={() => window.print()}
                 className="btn btn-primary"
                 style={{ background: '#d9534f', border: 'none', padding: '12px 30px', fontWeight: 'bold', textShadow: 'none' }}
               >
                 PRINT ALL SLIPS
+              </button>
+              <button 
+                onClick={() => downloadPDF('all-tickets-container', `All_Slips_${bookingRef.replace(/\//g, '_')}.pdf`)}
+                className="btn btn-primary"
+                style={{ background: '#00C851', border: 'none', padding: '12px 30px', fontWeight: 'bold', textShadow: 'none' }}
+              >
+                DOWNLOAD ALL SLIPS (PDF)
               </button>
             </div>
           </div>
