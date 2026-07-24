@@ -428,6 +428,16 @@ function UserPortal() {
       <h1>Shri Machail Mata Yatra 2026</h1>
       <h3 style={{ marginBottom: '2rem' }}>Online Registration Portal</h3>
 
+      {/* Emergency / Suspension Notice Marquee */}
+      <div className="spiritual-marquee" style={{ marginBottom: '1rem', maxWidth: '800px', margin: '0 auto 1rem auto', background: 'linear-gradient(90deg, #d32f2f, #b71c1c)', boxShadow: '0 4px 15px rgba(211, 47, 47, 0.5)', border: '1px solid #ffeb3b' }}>
+        <div className="marquee-content">
+          <span className="flash-otp" style={{ color: '#ffffff', fontWeight: 'bold', fontSize: '1.05rem', letterSpacing: '0.5px' }}>
+            🚨 IMPORTANT NOTICE: Shri Machail Mata Ji Yatra Movement, has been temporarily suspended due to adverse weather conditions upto 27th of July 2026. {'\u0950'} 🚨 IMPORTANT NOTICE: Shri Machail Mata Ji Yatra Movement, has been temporarily suspended due to adverse weather conditions upto 27th of July 2026. {'\u0950'} 🚨 IMPORTANT NOTICE: Shri Machail Mata Ji Yatra Movement, has been temporarily suspended due to adverse weather conditions upto 27th of July 2026. {'\u0950'}
+          </span>
+        </div>
+      </div>
+
+      {/* Spiritual Welcome Marquee */}
       <div className="spiritual-marquee" style={{ marginBottom: '2rem', maxWidth: '800px', margin: '0 auto 2rem auto', boxShadow: '0 4px 15px rgba(255, 102, 0, 0.4)' }}>
         <div className="marquee-content">
           {'\u0950'} जय माता दी {'\u0950'} श्री मचैल माता यात्रा 2026 में आपका स्वागत है {'\u0950'} कृपया अपनी सारी जानकारी ध्यानपूर्वक भरें {'\u0950'} जय चंडी माता {'\u0950'} <span className="flash-otp" style={{ color: '#FFD700', padding: '0 10px' }}>[TEST MODE] USE OTP: 123456</span> {'\u0950'}
